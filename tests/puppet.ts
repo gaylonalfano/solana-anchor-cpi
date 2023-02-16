@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import { expect } from "chai";
 import { PuppetProgram } from "../target/types/puppet_program";
 import { MasterProgram } from "../target/types/master_program";
@@ -14,15 +14,21 @@ describe('puppet', () => {
   const puppetProgram = anchor.workspace.PuppetProgram as Program<PuppetProgram>;
   const masterProgram = anchor.workspace.MasterProgram as Program<MasterProgram>;
 
-  // Scenario A: Puppet acct is a standard account
+  // NOTE We need a puppetKeypair for the Puppet initialize()
   const puppetKeypair = Keypair.generate();
-  const authorityKeypair = Keypair.generate();
 
-  // Scenario B: Puppet acct is a PDA instead
+  // Scenario B: authority is a PDA
+  // Q: What's happening here? 
+  // The Puppet data account still needs a Keypair, but now we're creating a
+  // a puppetMasterPDA just for the signing. This is different than just
+  // creating a PDA with the masterProgram. This example is all about CPI.
+  // I guess you could have 
+  it('CPI: authority as PDA', async () => {
+    const [puppetMasterPDA, puppetMasterBump] = await PublicKey
+      .findProgramAddress([], masterProgram.programId);
 
-  it('CPI using Keypair', async () => {
     await puppetProgram.methods
-      .initialize(authorityKeypair.publicKey)
+      .initialize(puppetMasterPDA)
       .accounts({
         puppet: puppetKeypair.publicKey,
         user: provider.wallet.publicKey,
@@ -30,17 +36,62 @@ describe('puppet', () => {
       .signers([puppetKeypair])
       .rpc();
 
+    // Q: Can I use the same PDA authority used to initialize
+    // the puppet account to also set_data() even though the 
+    // SetData Context struct has authority: Signer type
+    // A: NO! Would have to pass authorityKeypair.publicKey
+    // **See Scenario A below**
+    // await puppetProgram.methods
+    //   .setData(new anchor.BN(18))
+    //   .accounts({
+    //     puppet: puppetKeypair.publicKey,
+    //     authority: puppetMasterPDA
+    //   })
+    //   .rpc();
+
+    // expect((await puppetProgram.account.puppet
+    //   .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(18);
+
+
     await masterProgram.methods
-      .pullStrings(new anchor.BN(42))
+      .pullStrings(puppetMasterBump, new anchor.BN(42))
       .accounts({
         puppetProgram: puppetProgram.programId,
         puppet: puppetKeypair.publicKey,
-        authority: authorityKeypair.publicKey
+        authority: puppetMasterPDA // <-- Now just PDA. CPI sets 'authority' PDA
+        // account 'is_signer = true', so masterProgram can sign with 'authority'
       })
-      .signers([authorityKeypair])
       .rpc();
 
     expect((await puppetProgram.account.puppet
       .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(42);
   });
+
+  // // Scenario A: authority is a Keypair
+  // const authorityKeypair = Keypair.generate();
+
+  // xit('CPI: authority as Keypair', async () => {
+  //   await puppetProgram.methods
+  //     .initialize(authorityKeypair.publicKey)
+  //     .accounts({
+  //       puppet: puppetKeypair.publicKey,
+  //       user: provider.wallet.publicKey,
+  //     })
+  //     .signers([puppetKeypair])
+  //     .rpc();
+
+  //   await masterProgram.methods
+  //     .pullStrings(new anchor.BN(42))
+  //     .accounts({
+  //       puppetProgram: puppetProgram.programId,
+  //       puppet: puppetKeypair.publicKey,
+  //       authority: authorityKeypair.publicKey
+  //     })
+  //     .signers([authorityKeypair])
+  //     .rpc();
+
+  //   expect((await puppetProgram.account.puppet
+  //     .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(42);
+  // })
+
 });

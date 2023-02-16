@@ -11,6 +11,11 @@ pub mod puppet_program {
         Ok(())
     }
 
+    pub fn set_data(ctx: Context<SetData>, data: u64) -> Result<()> {
+        let puppet = &mut ctx.accounts.puppet;
+        puppet.data = data;
+        Ok(())
+    }
     // Q: How to return values from handler functions?
     // A: Use Solana's set_return_data and get_return_data syscalls!
     // This data can be used in CPI callers and clients.
@@ -18,11 +23,11 @@ pub mod puppet_program {
     // You just need to specify the return data inside Result<u64>
     // When you don't use '()' return type, Anchor calls set_return_data()
     // The return from a CPI call is wrapped in a struct to allow lazy retrieval of data
-    pub fn set_data(ctx: Context<SetData>, data: u64) -> Result<u64> {
-        let puppet = &mut ctx.accounts.puppet;
-        puppet.data = data;
-        Ok(data)
-    }
+    // pub fn set_data(ctx: Context<SetData>, data: u64) -> Result<u64> {
+    //     let puppet = &mut ctx.accounts.puppet;
+    //     puppet.data = data;
+    //     Ok(data)
+    // }
 }
 
 #[derive(Accounts)]
@@ -39,6 +44,8 @@ pub struct SetData<'info> {
     // NOTE has_one checks that puppet.authority = authority.key()
     #[account(mut, has_one = authority)]
     pub puppet: Account<'info, Puppet>,
+    // Q: If masterProgram uses a PDA for PullStrings 'authority' CPI account,
+    // will type Signer still work?
     pub authority: Signer<'info>,
 }
 
