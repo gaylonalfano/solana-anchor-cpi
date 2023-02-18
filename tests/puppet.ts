@@ -19,10 +19,11 @@ describe('puppet', () => {
 
   // Scenario B: authority is a PDA
   // Q: What's happening here? 
-  // The Puppet data account still needs a Keypair, but now we're creating a
-  // a puppetMasterPDA just for the signing. This is different than just
-  // creating a PDA with the masterProgram. This example is all about CPI.
-  // I guess you could have 
+  // The Puppet data account still needs a puppetKeypair to sign the initialize() method, 
+  // but now we're creating a puppetMasterPDA to pass as puppet's 'authority'. 
+  // This is different than just creating a PDA with the masterProgram. 
+  // Doing this allows the masterProgram's pullStrings() method ix to be signed by
+  // the 'authority' PDA, which is derived from masterProgram.programId + bump
   it('CPI: authority as PDA', async () => {
     const [puppetMasterPDA, puppetMasterBump] = await PublicKey
       .findProgramAddress([], masterProgram.programId);

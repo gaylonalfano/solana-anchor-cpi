@@ -1,10 +1,12 @@
 [features]
 seeds = false
 skip-lint = false
+
 [programs.localnet]
-solana_anchor_cpi = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
-puppet_program = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
-master_program = "HmbTLCmaGvZhKnn1Zfa1JVnp7vkMV4DYVxPLWBVoN65L"
+solana_anchor_cpi = "7LXZ8onmdiK629ZfPnDKXMSL7tbEnuLzsvpzokCNonq4"
+puppet_program = "CEReZ1uhTPWpaY3YbScWvKeLm8XcM6jM42dkv8F9Dypk"
+master_program = "vGymT9KU2hQMZvYxMapvDeqhhyD25VVZ6JKdZjx6925"
+custom_spl_token = "cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp"
 
 [registry]
 url = "https://api.apr.dev"
