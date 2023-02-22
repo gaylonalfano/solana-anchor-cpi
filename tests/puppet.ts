@@ -5,7 +5,6 @@ import { expect } from "chai";
 import { PuppetProgram } from "../target/types/puppet_program";
 import { MasterProgram } from "../target/types/master_program";
 
-
 describe('puppet', () => {
   // Configure the client to use the local cluster.
   const provider = anchor.AnchorProvider.env();
