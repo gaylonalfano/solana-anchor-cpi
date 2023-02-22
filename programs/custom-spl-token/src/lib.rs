@@ -200,6 +200,22 @@ pub struct InitializeDappSpl<'info> {
     #[account(mut)]
     pub mint: Signer<'info>,
 
+
+    // NOTE I've seen another approach to init the Mint here
+    // instead of passing a Keypair.
+    // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/programs/token-with-metadata/src/lib.rs
+    // Q: Not sure if I can do this inside same ix validation struct,
+    // since dapp_token_manager is also getting initialized in same ix.
+    // A: Nope. Maybe with init_if_needed but nice to know there's a variant out there
+    // #[account(
+    //     init,
+    //     payer = authority,
+    //     mint::decimals = 9,
+    //     mint::authority = dapp_token_manager,
+    // )]
+    // pub mint: Account<'info, Mint>,
+
+
     // Client: Need to findProgramAddressSync() for PDA
     #[account(
         init,
