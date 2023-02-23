@@ -124,7 +124,6 @@ pub mod custom_spl_token {
                     ctx.accounts.mint.key().as_ref(),
                     &[ctx.accounts.dapp_token_manager.bump],
                 ]],
-
                 // Syntax 2: Using helper impl fn instead
                 // &[&ctx.accounts.dapp_token_manager.dapp_token_manager_seeds()], // &[&[&[u8]; 3]]
             ),
@@ -133,65 +132,70 @@ pub mod custom_spl_token {
             &ctx.accounts.dapp_token_manager.key(), // mint authority
             Some(&ctx.accounts.dapp_token_manager.key()), // freeze authority
         )?;
-        msg!("Mint initialized! {:?}", &ctx.accounts.mint.to_account_info());
-
+        msg!(
+            "Mint initialized! {:?}",
+            &ctx.accounts.mint.to_account_info()
+        );
 
         Ok(())
     }
 
-    // pub fn mint_dapp_spl(ctx: Context<MintDappSpl>) -> Result<()> {
-    //     // Q: Is this spl-token create-account <TOKEN_ADDRESS> <OWNER_ADDRESS>?
-    //     // A: Yes, I believe this is more-or-less the equivalent, BUT it's hitting
-    //     // the Associated Token Program, which hits the main Token Program, which itself
-    //     // hits the System Program that creates the ATA.
-    //     // Q: Does the System Program assign the Associated Token Program OR
-    //     // the Token Program as the OWNER of the ATA? Is there even an Owner to ATAs? Probably...
-    //     // NOTE When running this CLI command, the owner of account is our local keypair account
-    //     // NOTE This create-account command literally adds the token account (token holdings) inside owner's wallet!
-    //     // Q: Is this the Token Metadata Program creating the Metadata Account for the token?
-    //     // A: Don't believe so because this comes later with steps 5 and 6 w/ Metaplex
-    //     msg!("1. Creating associated token account for the mint and the wallet...");
-    //     // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
-    //     associated_token::create(CpiContext::new(
-    //         ctx.accounts.associated_token_program.to_account_info(),
-    //         associated_token::Create {
-    //             payer: ctx.accounts.mint_authority.to_account_info(),
-    //             associated_token: ctx.accounts.token_account.to_account_info(),
-    //             // Q: How do you know which is the authority? Authority of what?
-    //             // The wallet that this ATA is getting added to? Perhaps...
-    //             // A: Yes! It's the owner's wallet <OWNER_ADDRESS> that has authority of this new ATA!
-    //             authority: ctx.accounts.mint_authority.to_account_info(),
-    //             mint: ctx.accounts.mint.to_account_info(),
-    //             system_program: ctx.accounts.system_program.to_account_info(),
-    //             // NOTE Still need main token_program to create associated token account
-    //             token_program: ctx.accounts.token_program.to_account_info(),
-    //         },
-    //     ))?;
+    pub fn mint_dapp_spl(ctx: Context<MintDappSpl>) -> Result<()> {
+        // Q: Is this spl-token create-account <TOKEN_ADDRESS> <OWNER_ADDRESS>?
+        // A: Yes, I believe this is more-or-less the equivalent, BUT it's hitting
+        // the Associated Token Program, which hits the main Token Program, which itself
+        // hits the System Program that creates the ATA.
+        // Q: Do I need to check whether ATA already exists?
+        // U: Don't think so since I'll be using getOrCreateAssociatedTokenAccount() in client
+        msg!("1. Creating associated token account for the mint and the wallet...");
+        // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
+        associated_token::create(CpiContext::new(
+            ctx.accounts.associated_token_program.to_account_info(),
+            associated_token::Create {
+                payer: ctx.accounts.user.to_account_info(),
+                associated_token: ctx.accounts.user_token_account.to_account_info(),
+                // Q: How do you know which is the authority? Authority of what?
+                // The wallet that this ATA is getting added to? Perhaps...
+                // A: Yes! It's the owner's wallet <OWNER_ADDRESS> that has authority of this new ATA!
+                authority: ctx.accounts.user.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+                // NOTE Still need main token_program to create associated token account
+                token_program: ctx.accounts.token_program.to_account_info(),
+            },
+        ))?;
 
-    //     // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
-    //     // A: Yes! This mints (increases supply of Token) and transfers new tokens
-    //     // to owner's token account (default recipient token address) balance
-    //     msg!("2. Minting token to the token account (i.e. give it 1 for NFT)...");
-    //     // msg!("Mint: {}", &ctx.accounts.mint.key());
-    //     // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
-    //     token::mint_to(
-    //         CpiContext::new(
-    //             ctx.accounts.token_program.to_account_info(), // Program to ping
-    //             token::MintTo {
-    //                 // Instructions with accounts to pass to program
-    //                 mint: ctx.accounts.mint.to_account_info(),
-    //                 to: ctx.accounts.token_account.to_account_info(),
-    //                 authority: ctx.accounts.mint_authority.to_account_info(),
-    //             }, // Q: Why not pass rent account? We do in the raw version
-    //                                                           // NOTE I believe the raw INSTRUCTION corresponds (mostly) to the
-    //                                                           // Anchor CpiContext. It's not 100%, but seems to be mostly the case
-    //         ),
-    //         // Additonal args
-    //         1, // amount
-    //     )?;
+        // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
+        // A: Yes! This mints (increases supply of Token) and transfers new tokens
+        // to owner's token account (default recipient token address) balance
+        msg!("2. Minting token to the token account (signing via dapp_token_manager PDA seeds)...");
+        // msg!("Mint: {}", &ctx.accounts.mint.key());
+        // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(), // Program to ping
+                token::MintTo {
+                    // Instructions with accounts to pass to program
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
+                    authority: ctx.accounts.dapp_token_manager.to_account_info(),
+                }, 
+                // Sign with PDA seeds
+                &[&[
+                    DappTokenManager::SEED_PREFIX.as_bytes(),
+                    ctx.accounts.mint.key().as_ref(),
+                    &[ctx.accounts.dapp_token_manager.bump]
+                ]]
+            ),
+            // Additonal args
+            DappTokenManager::MINT_AMOUNT, // amount
+        )?;
 
-    //     Ok(())
-    // }
+        // Update total_user_mint_count
+        ctx.accounts.dapp_token_manager.total_user_mint_count += 1;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -199,7 +203,6 @@ pub struct InitializeDappSpl<'info> {
     // Client: Need to pass a Keypair
     #[account(mut)]
     pub mint: Signer<'info>,
-
 
     // NOTE I've seen another approach to init the Mint here
     // instead of passing a Keypair.
@@ -214,7 +217,6 @@ pub struct InitializeDappSpl<'info> {
     //     mint::authority = dapp_token_manager,
     // )]
     // pub mint: Account<'info, Mint>,
-
 
     // Client: Need to findProgramAddressSync() for PDA
     #[account(
@@ -249,38 +251,67 @@ pub struct InitializeDappSpl<'info> {
     pub token_program: Program<'info, token::Token>,
 }
 
-// #[derive(Accounts)]
-// pub struct MintDappSpl<'info> {
-//     // U: Separating out from initializing the dapp SPL
-//     // Using this instruction to mint supply to a new user.
-//     // Thinking of using this whenever a user wallet creates
-//     // a new ledger, this will mint supply to the wallet and be
-//     // signed by PDA. May consider adding a mint_number to Ledger struct
-//     // or maybe create another Profile struct to limit the number of
-//     // times we mint supply to same wallet. Thinking 100k per ledger
+#[derive(Accounts)]
+pub struct MintDappSpl<'info> {
+    // U: Separating out from initializing the dapp SPL
+    // Using this instruction to mint supply to a new user.
+    // Thinking of using this whenever a user wallet creates
+    // a new ledger, this will mint supply to the wallet and be
+    // signed by PDA. May consider adding a mint_number to Ledger struct
+    // or maybe create another Profile struct to limit the number of
+    // times we mint supply to same wallet. Thinking 100k per ledger
 
-//     // TODOS:
-//     // - Bring in dapp_token_manager account
-//     // - Bring in user (wallet) account
-//     // - rent, system_program, token_program, associated_token
+    // TODOS:
+    // - DONE Bring in dapp_token_manager account
+    // - DONE Bring in user (wallet) account
+    // - DONE rent, system_program, token_program, associated_token
+    // - Determine the names for the user wallet (user, payer, authority) -- Choose one!
+    // - Build the actual instruction method
+    // - Checks/constraints to consider:
+    //   - Q: How to prevent one user getting all the supply?
+    //   - mint.key() == dapp_token_manager.mint
+    //   - user_token_account.mint == dapp_token_manager.mint
+    //   - user_token_account.owner == user.key()
+    //   - mint.mint_authority == dapp_token_manager
+    //   - mint.freeze_authority == dapp_token_manager
+    //   - mint.supply < mint.cap
+    #[account(mut)]
+    user: Signer<'info>, // wallet
 
-//     #[account(
-//         mut,
-//         constraint = user_token_account.mint == dapp_token_manager.mint,
-//         constraint = user_token_account.owner == user.key()
-//     )]
-//     pub user_token_account: Account<'info, TokenAccount>,
+    #[account(
+        constraint = mint.key() == dapp_token_manager.mint
+    )]
+    mint: Account<'info, Mint>,
 
+    #[account(
+        mut,
+        seeds = [
+            DappTokenManager::SEED_PREFIX.as_ref(),
+            mint.key().as_ref(),
+        ],
+        bump = dapp_token_manager.bump
+    )]
+    pub dapp_token_manager: Account<'info, DappTokenManager>,
 
+    // Q: I need to init this the first time for the user
+    // May want to consider the 'init_if_needed' feature
+    // A: Instead of using 'init_if_needed' here, I can
+    // instead create the ATA from the CLIENT using
+    // getOrCreateAssociatedTokenAccount(). This way I can
+    // add the constraints on the account.
+    // REF: Escrow program tests 'buyer_z_token_account'
+    #[account(
+        mut,
+        constraint = user_token_account.mint == mint.key(),
+        constraint = user_token_account.owner == user.key(),
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
 
-//         #[account(
-//         mut, 
-//         constraint = seller_out_token_account.mint == out_mint.key(),
-//         constraint = seller_out_token_account.owner == seller.key()
-//     )] 
-//     seller_out_token_account: Account<'info, TokenAccount>,
-
-// }
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, token::Token>,
+    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+}
 
 // U: Adding another high-level account to enable multiple escrows created by same/single wallet
 // NOTE: Technically don't need to create a data account for the PDA. This is only if I want
@@ -311,6 +342,9 @@ impl DappTokenManager {
         + BUMP_LENGTH;
 
     pub const SEED_PREFIX: &'static str = "dapp-token-manager";
+    // NOTE To get MAX of type: u32::MAX
+    // Q: Need &'static lifetime for u64?
+    pub const MINT_AMOUNT: u64 = 1000000000 * 100; // 100,000 Tokens
 
     pub fn new(mint: Pubkey, authority: Pubkey, bump: u8) -> Self {
         DappTokenManager {
@@ -327,7 +361,7 @@ impl DappTokenManager {
     //     // NOTE: The above is signed like this:
     //     // t::transfer(ctx.accounts.transfer_ctx().with_signer(&[&vault.vault_seeds()]),
 
-    //     
+    //
     //     [
     //         DappTokenManager::SEED_PREFIX.as_bytes(), // &[u8]
     //         // Self::SEED_PREFIX.as_bytes(), // &[u8]
@@ -342,3 +376,59 @@ impl DappTokenManager {
     //     token::transfer(, amount)
     // }
 }
+
+
+
+
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_time_tracker() {
+//         let times = TimeTracker {
+//             duration_sec: 100,
+//             reward_end_ts: 200,
+//             lock_end_ts: 0,
+//         };
+
+//         assert_eq!(70, times.remaining_duration(130).unwrap());
+//         assert_eq!(0, times.remaining_duration(9999).unwrap());
+//         assert_eq!(30, times.passed_duration(130).unwrap());
+//         assert_eq!(199, times.reward_upper_bound(199));
+//         assert_eq!(200, times.reward_upper_bound(201));
+//         assert_eq!(100, times.reward_begin_ts().unwrap());
+//         assert_eq!(110, times.reward_lower_bound(110).unwrap());
+//     }
+
+//     #[test]
+//     fn test_time_tracker_end_reward() {
+//         let mut times = TimeTracker {
+//             duration_sec: 80,
+//             reward_end_ts: 200,
+//             lock_end_ts: 0,
+//         };
+
+//         times.end_reward(140).unwrap();
+//         assert_eq!(times.duration_sec, 20);
+//         assert_eq!(times.reward_end_ts, 140);
+
+//         // repeated calls with later TS won't have an effect
+//         times.end_reward(150).unwrap();
+//         assert_eq!(times.duration_sec, 20);
+//         assert_eq!(times.reward_end_ts, 140);
+//     }
+
+//     #[test]
+//     fn test_funds_tracker() {
+//         let funds = FundsTracker {
+//             total_funded: 100,
+//             total_refunded: 50,
+//             total_accrued_to_stakers: 30,
+//         };
+
+//         assert_eq!(20, funds.pending_amount().unwrap());
+//     }
+// }
+

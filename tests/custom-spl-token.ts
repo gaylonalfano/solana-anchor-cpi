@@ -101,6 +101,8 @@ describe("custom-spl-token", () => {
     // Get a mint address
     // pub const SEED_PREFIX: &'static str = "dapp-token-manager";
 
+    // IMPORTANT: I'll have to move this Keypair out of this test
+    // when I want to have ONE SINGLE token for the program
     const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
     console.log(`New token (mint): ${mintKeypair.publicKey}`);
 
@@ -126,16 +128,20 @@ describe("custom-spl-token", () => {
       .rpc({ skipPreflight: true }); // Get better logs
     console.log("tx:", tx);
 
-    // Check that SPL was created, ATA created, and supply minted
+    // Check that SPL was created and supply minted
     const dappTokenManager = await program.account.dappTokenManager.fetch(
       dappTokenManagerPda
     );
     console.log("dappTokenManager: ", dappTokenManager);
-    
-    // const dappSplMint = await ancho
 
-    // console.log(walletTokenAccountInfo); // { context: {}, value: {} }
-    // expect(parseInt(walletTokenAccountInfo.value.amount)).to.equal(1);
+    const dappSplMint = await getMint(provider.connection, dappTokenManager.mint);
+    console.log("dappSplMint: ", dappSplMint);
+    
+    expect(dappTokenManager.mint.toBase58()).to.equal(mintKeypair.publicKey.toBase58());
+    expect(dappTokenManager.totalUserMintCount.toNumber()).to.equal(0);
+    expect(dappTokenManager.bump).to.equal(dappTokenManagerBump);
+    expect(dappSplMint.mintAuthority.toBase58()).to.equal(dappTokenManagerPda.toBase58());
+    expect(dappSplMint.freezeAuthority.toBase58()).to.equal(dappTokenManagerPda.toBase58());
   });
 
 });
