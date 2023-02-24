@@ -18,13 +18,13 @@ use {
 // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/programs/token-with-metadata/src/lib.rs
 //
 
-// TODOS:
-// - ******====Consolidate the validation struct into InitializeDappSpl
-// - Get the sequence right:
-// 1. SystemProgram CreateAccount (will have mint address)
-// 2. Create DappTokenManager PDA
-// 3. InitializeMint using mint + PDA & set authority = PDA
-// 4. Mint supply using CPI+seeds to PDA token_account
+// NOTE General sequence I believe:
+// 1. Client: Generate Mint Keypair
+// 2. Program: SystemProgram CreateAccount (will have mint address from CLIENT Keypair)
+// 3. Program: Create DappTokenManager PDA
+// 4. Program: InitializeMint using mint + PDA & set authority = PDA
+// 5. Client: User connects and needs mint supply
+// 6. Program: Mint supply using CPI+seeds to PDA user_token_account
 
 declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
 
@@ -141,12 +141,12 @@ pub mod custom_spl_token {
     }
 
     pub fn mint_dapp_spl(ctx: Context<MintDappSpl>) -> Result<()> {
+        // Q: Do I need to check whether ATA already exists?
+        // U: Don't think so since I'll be using getOrCreateAssociatedTokenAccount() in client...
         // Q: Is this spl-token create-account <TOKEN_ADDRESS> <OWNER_ADDRESS>?
         // A: Yes, I believe this is more-or-less the equivalent, BUT it's hitting
         // the Associated Token Program, which hits the main Token Program, which itself
         // hits the System Program that creates the ATA.
-        // Q: Do I need to check whether ATA already exists?
-        // U: Don't think so since I'll be using getOrCreateAssociatedTokenAccount() in client
         msg!("1. Creating associated token account for the mint and the wallet...");
         // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
         associated_token::create(CpiContext::new(
@@ -168,7 +168,7 @@ pub mod custom_spl_token {
         // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
         // A: Yes! This mints (increases supply of Token) and transfers new tokens
         // to owner's token account (default recipient token address) balance
-        msg!("2. Minting token to the token account (signing via dapp_token_manager PDA seeds)...");
+        msg!("2. Minting supply to the token account (signing via dapp_token_manager PDA seeds)...");
         // msg!("Mint: {}", &ctx.accounts.mint.key());
         // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
         token::mint_to(
@@ -228,13 +228,13 @@ pub struct InitializeDappSpl<'info> {
             mint.key().as_ref(),
             // Q: How to get current programId?
             // I can access it in ix using ctx.programId, but dunno how here...
-            // A: Not necessary as programId is part of deriving PDA anyway!
+            // U: Not necessary as programId is part of deriving PDA anyway!
         ],
         bump
     )]
     pub dapp_token_manager: Account<'info, DappTokenManager>,
 
-    // U: Don't think I even need an ATA for DappTokenManager PDA
+    // U: Don't think I even need an ATA for DappTokenManager PDA. Can simply mint supply
     // #[account(
     //     init,
     //     payer = authority,
@@ -276,12 +276,12 @@ pub struct MintDappSpl<'info> {
     //   - mint.freeze_authority == dapp_token_manager
     //   - mint.supply < mint.cap
     #[account(mut)]
-    user: Signer<'info>, // wallet
+    pub user: Signer<'info>, // wallet
 
     #[account(
         constraint = mint.key() == dapp_token_manager.mint
     )]
-    mint: Account<'info, Mint>,
+    pub mint: Account<'info, Mint>,
 
     #[account(
         mut,
