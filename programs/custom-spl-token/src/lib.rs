@@ -26,6 +26,11 @@ use {
 // 5. Client: User connects and needs mint supply
 // 6. Program: Mint supply using CPI+seeds to PDA user_token_account
 
+// TODO
+// - Consider building another variation where 'mint' and 'user_token_account'
+// are both created inside program instead of using JS. See Bare's snippet below.
+// and would have to use init_if_needed feature for ATA.
+
 declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
 
 #[program]
@@ -147,23 +152,30 @@ pub mod custom_spl_token {
         // A: Yes, I believe this is more-or-less the equivalent, BUT it's hitting
         // the Associated Token Program, which hits the main Token Program, which itself
         // hits the System Program that creates the ATA.
-        msg!("1. Creating associated token account for the mint and the wallet...");
-        // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
-        associated_token::create(CpiContext::new(
-            ctx.accounts.associated_token_program.to_account_info(),
-            associated_token::Create {
-                payer: ctx.accounts.user.to_account_info(),
-                associated_token: ctx.accounts.user_token_account.to_account_info(),
-                // Q: How do you know which is the authority? Authority of what?
-                // The wallet that this ATA is getting added to? Perhaps...
-                // A: Yes! It's the owner's wallet <OWNER_ADDRESS> that has authority of this new ATA!
-                authority: ctx.accounts.user.to_account_info(),
-                mint: ctx.accounts.mint.to_account_info(),
-                system_program: ctx.accounts.system_program.to_account_info(),
-                // NOTE Still need main token_program to create associated token account
-                token_program: ctx.accounts.token_program.to_account_info(),
-            },
-        ))?;
+        // Q: Do I need this if I'm calling getOrCreateAssociatedTokenAccount() in client?
+        // This is different from NFT ATA, since the user could possibly already
+        // have an ATA for dapp mint.
+        // U: Removing at_create() to see...
+        // A: Not needed if I'm creating the ATA from the CLIENT!
+        // There is a create_idempotent() that was suggested, which seems to achieve
+        // the same thing as create() + init_if_needed feature.
+        // msg!("1. Creating associated token account for the mint and the wallet...");
+        // // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
+        // associated_token::create(CpiContext::new(
+        //     ctx.accounts.associated_token_program.to_account_info(),
+        //     associated_token::Create {
+        //         payer: ctx.accounts.user.to_account_info(),
+        //         associated_token: ctx.accounts.user_token_account.to_account_info(),
+        //         // Q: How do you know which is the authority? Authority of what?
+        //         // The wallet that this ATA is getting added to? Perhaps...
+        //         // A: Yes! It's the owner's wallet <OWNER_ADDRESS> that has authority of this new ATA!
+        //         authority: ctx.accounts.user.to_account_info(),
+        //         mint: ctx.accounts.mint.to_account_info(),
+        //         system_program: ctx.accounts.system_program.to_account_info(),
+        //         // NOTE Still need main token_program to create associated token account
+        //         token_program: ctx.accounts.token_program.to_account_info(),
+        //     },
+        // ))?;
 
         // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
         // A: Yes! This mints (increases supply of Token) and transfers new tokens
@@ -275,10 +287,20 @@ pub struct MintDappSpl<'info> {
     //   - mint.mint_authority == dapp_token_manager
     //   - mint.freeze_authority == dapp_token_manager
     //   - mint.supply < mint.cap
-    #[account(mut)]
-    pub user: Signer<'info>, // wallet
+    // #[account(mut)]
+    // pub user: Signer<'info>, // wallet
 
+
+    // U: Bare would use `init_if_needed` instead of creating from Client
+    // #[account(init_if_needed,
+    //     payer = signer,
+    //     associated_token::mint = mint,
+    //     associated_token::authority = signer)]
+    // pub user_token_account: Account<'info, TokenAccount>,
+
+    // U: MUST make the 'mint' account writable since supply will be mutated!
     #[account(
+        mut,
         constraint = mint.key() == dapp_token_manager.mint
     )]
     pub mint: Account<'info, Mint>,
@@ -303,14 +325,21 @@ pub struct MintDappSpl<'info> {
     #[account(
         mut,
         constraint = user_token_account.mint == mint.key(),
-        constraint = user_token_account.owner == user.key(),
+        // Q: What happens if I remove user input account and
+        // this constraint? If I have user & this constraint,
+        // I encounter TokenAccountNotFoundError. If I don't pass
+        // user input account but keep this constraint, I get 
+        // raw contraint violation error.
+        // U: I THINK I only need to pass user wallet (payer) and
+        // add this constraint when doing TRANSFER...
+        // constraint = user_token_account.owner == user.key(),
     )]
     pub user_token_account: Account<'info, TokenAccount>,
 
     pub rent: Sysvar<'info, Rent>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, token::Token>,
-    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+    // pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
 }
 
 // U: Adding another high-level account to enable multiple escrows created by same/single wallet
@@ -344,7 +373,7 @@ impl DappTokenManager {
     pub const SEED_PREFIX: &'static str = "dapp-token-manager";
     // NOTE To get MAX of type: u32::MAX
     // Q: Need &'static lifetime for u64?
-    pub const MINT_AMOUNT: u64 = 1000000000 * 100; // 100,000 Tokens
+    pub const MINT_AMOUNT: u64 = 1000000000 * 100; // 100 Tokens
 
     pub fn new(mint: Pubkey, authority: Pubkey, bump: u8) -> Self {
         DappTokenManager {
