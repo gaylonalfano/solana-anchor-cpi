@@ -26,10 +26,32 @@ use {
 // 5. Client: User connects and needs mint supply
 // 6. Program: Mint supply using CPI+seeds to PDA user_token_account
 
+// Q/U: After successfully writing a test on localhost, this is how I've divided
+// the tasks involved:
+// 1. Client: Generate Mint Keypair
+//    - NOTE: Could consider creating with CLI or in program
+// 2. Client: Derive dappTokenManager PDA with Mint + Program
+// 3. Program: SystemProgram CreateAccount for Mint
+// 4. Program: Create DappTokenManager PDA data account
+// 5. Program: InitializeMint using mint + PDA & set authority = PDA
+// 6. Client: User connects and needs mint supply
+// 7. Client: Create (if needed) user's ATA
+//    - NOTE: Could do in program instead using create() + init_if_needed
+//            or create_idempotent()
+// 8. Program: mint_to() + PDA signer
+
+// NOTE Brainstorming CLI + PDA (but no PDA data account ie dappTokenManager)
+// 1. CLI: Create Mint
+// 2. ???: Derive a PDA address (not account!) with Mint + Program
+// 3. CLI: Set mint and freeze authority to PDA
+// 4. Program: Create (if needed) user ATA with create_idempotent()
+// 5. Program: mint_to() + PDA signer
+
 // TODO
 // - Consider building another variation where 'mint' and 'user_token_account'
 // are both created inside program instead of using JS. See Bare's snippet below.
-// and would have to use init_if_needed feature for ATA.
+// and would have to use create() + init_if_needed feature, 
+// OR create_idempotent() for ATA.
 
 declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
 
@@ -200,7 +222,7 @@ pub mod custom_spl_token {
                 ]]
             ),
             // Additonal args
-            DappTokenManager::MINT_AMOUNT, // amount
+            DappTokenManager::MINT_AMOUNT_RAW, // amount
         )?;
 
         // Update total_user_mint_count
@@ -373,7 +395,8 @@ impl DappTokenManager {
     pub const SEED_PREFIX: &'static str = "dapp-token-manager";
     // NOTE To get MAX of type: u32::MAX
     // Q: Need &'static lifetime for u64?
-    pub const MINT_AMOUNT: u64 = 1000000000 * 100; // 100 Tokens
+    pub const MINT_AMOUNT_RAW: u64 = 1000000000 * 100; // 100 Tokens
+    pub const MINT_AMOUNT_UI: u64 = 100; // 100 Tokens
 
     pub fn new(mint: Pubkey, authority: Pubkey, bump: u8) -> Self {
         DappTokenManager {

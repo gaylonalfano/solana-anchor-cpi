@@ -21,6 +21,7 @@ import { CustomSplToken } from "../target/types/custom_spl_token";
 // - InstructionError: IllegalOwner - Provided owner is not allowed (minting to user1TokenAccount)
 // - SK Hooks (see Notion)
 // - create() + init_if_needed feature vs. create_idempotent()
+// - BigInt arithmetic
 
 // async function createKeypairFromFile(
 //   filepath: string
@@ -326,7 +327,7 @@ describe("custom-spl-token", () => {
       mintKeypair.publicKey
     );
     console.log('dappTokenMint: ', dappTokenMint);
-    
+
     // Q: How to work with type 'bigint'?
     // A: Use * operator and express in whole numbers of use Number()
     // REF: https://stackoverflow.com/questions/71636101/how-to-divide-bigint-by-decimal-in-javascript
@@ -347,8 +348,8 @@ describe("custom-spl-token", () => {
 
 
     // Example 3:
-    const supplyUiAmountStr = (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // ?
-    console.log('supplyUiAmountStr: ', supplyUiAmountStr);
+    const supplyUiAmountStr = (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 100
+    console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 100
     console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
     console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
     console.log('dappTokenMint.supply.valueOf(): ', dappTokenMint.supply.valueOf()); // 100000000000n
@@ -367,16 +368,15 @@ describe("custom-spl-token", () => {
     console.log('currentUser1TokenAccountInfo.amount.valueOf: ', currentUser1TokenAccountInfo.amount.valueOf()); // 100000000000n
     console.log('currentUser1TokenAccountInfo.amount.toString: ', currentUser1TokenAccountInfo.amount.toString()); // 100000000000
 
-
-    // ===== TODO ======
-    // TODO Assertions
     // - Mint supply should be MINT_AMOUNT 
-    // expect(dappTokenMint.supply.valueOf())
+    expect(
+      (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+    ).to.equal(MINT_AMOUNT_UI.toString());
     // - dappTokenManager.totalUserMintCount is 1
     expect(dappTokenManager.totalUserMintCount.toNumber()).to.equal(1);
     // - user1TokenAccountBalance is MINT_AMOUNT
     expect(currentUser1TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI);
-    // expect(currentUser1TokenAccountInfo.amount.valueOf().value.uiAmount).to.equal(MINT_AMOUNT_UI);
+    expect((currentUser1TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal(MINT_AMOUNT_UI.toString());
     // - user1TokenAccount.owner should be user1Wallet.pubkey
     expect(currentUser1TokenAccountInfo.owner.toBase58()).to.equal(user1Wallet.publicKey.toBase58())
   })
