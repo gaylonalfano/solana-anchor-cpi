@@ -40,17 +40,10 @@ use {
 //            or create_idempotent()
 // 8. Program: mint_to() + PDA signer
 
-// NOTE Brainstorming CLI + PDA (but no PDA data account ie dappTokenManager)
-// 1. CLI: Create Mint
-// 2. ???: Derive a PDA address (not account!) with Mint + Program
-// 3. CLI: Set mint and freeze authority to PDA
-// 4. Program: Create (if needed) user ATA with create_idempotent()
-// 5. Program: mint_to() + PDA signer
-
 // TODO
 // - Consider building another variation where 'mint' and 'user_token_account'
 // are both created inside program instead of using JS. See Bare's snippet below.
-// and would have to use create() + init_if_needed feature, 
+// and would have to use create() + init_if_needed feature,
 // OR create_idempotent() for ATA.
 
 declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
@@ -202,7 +195,9 @@ pub mod custom_spl_token {
         // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
         // A: Yes! This mints (increases supply of Token) and transfers new tokens
         // to owner's token account (default recipient token address) balance
-        msg!("2. Minting supply to the token account (signing via dapp_token_manager PDA seeds)...");
+        msg!(
+            "2. Minting supply to the token account (signing via dapp_token_manager PDA seeds)..."
+        );
         // msg!("Mint: {}", &ctx.accounts.mint.key());
         // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
         token::mint_to(
@@ -213,13 +208,13 @@ pub mod custom_spl_token {
                     mint: ctx.accounts.mint.to_account_info(),
                     to: ctx.accounts.user_token_account.to_account_info(),
                     authority: ctx.accounts.dapp_token_manager.to_account_info(),
-                }, 
+                },
                 // Sign with PDA seeds
                 &[&[
                     DappTokenManager::SEED_PREFIX.as_bytes(),
                     ctx.accounts.mint.key().as_ref(),
-                    &[ctx.accounts.dapp_token_manager.bump]
-                ]]
+                    &[ctx.accounts.dapp_token_manager.bump],
+                ]],
             ),
             // Additonal args
             DappTokenManager::MINT_AMOUNT_RAW, // amount
@@ -227,6 +222,77 @@ pub mod custom_spl_token {
 
         // Update total_user_mint_count
         ctx.accounts.dapp_token_manager.total_user_mint_count += 1;
+
+        Ok(())
+    }
+
+    // ========== TODO =========
+    // Need to consider init the Mint directly inside program
+    // Could modify my InitializeDappSpl
+    pub fn mint_dapp_token_with_cli_and_program(
+        ctx: Context<MintDappTokenWithCliAndProgram>,
+    ) -> Result<()> {
+        // NOTE Mint created with CLI. Just need to create ATA and mint_to()
+        // const cli_dapp_token_address = Pubkey::new()
+        // Q: Where do I derive the PDA? Program or Client?
+        // REF: https://docs.rs/anchor-lang/latest/anchor_lang/prelude/struct.Pubkey.html#method.find_program_address
+        // A: CLIENT! IMPORTANT: Below will give me an address,
+        // BUT, the IX needs an ACCOUNT to sign! 
+        // ALL accounts, due to design, should be passed 
+        // to initial instruction! Therefore, I need to pass
+        // this PDA from the CLIENT!
+        // NOTE: I don't need to initialize the account or anything.
+        // I just pass it and that's it. My program IX will do
+        // the rest of whatever else is needed.
+        // let (dapp_token_signer_pda, dapp_token_signer_bump) = Pubkey::find_program_address(
+        //     &[
+        //         b"dapp-token-mint-authority",
+        //         ctx.accounts.mint.key().as_ref(),
+        //     ],
+        //     &ctx.program_id,
+        // );
+        // let dapp_token_signer_seeds = &[
+        //     "dapp-token-mint-authority".as_bytes(),
+        //     &[dapp_token_signer_bump],
+        // ];
+
+        msg!("1. Creating associated token account for user (if needed)...");
+        // Q: create_idempotent need 'init' or 'mut' for user_token_account
+        // inside validation struct? My guess is 'init'
+        associated_token::create_idempotent(CpiContext::new(
+            ctx.accounts.associated_token_program.to_account_info(),
+            associated_token::Create {
+                associated_token: ctx.accounts.user_token_account.to_account_info(),
+                authority: ctx.accounts.user.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                payer: ctx.accounts.user.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+                token_program: ctx.accounts.token_program.to_account_info(),
+            },
+        ))?;
+
+        msg!("2. Minting supply to the token account (signing via PDA)...");
+        token::mint_to(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                token::MintTo {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
+                    // Q: Can I pass just PDA pubkey? Only have address, no account!
+                    // I will need to set mint.mint_authority = PDA before this part...
+                    // A: NOPE! Must be an ACCOUNT! 
+                    // Q: Is Fedoras' 'nft_mint' a PDA? 
+                    // A: No, 'nft_mint' is a Keypair
+                    authority: dapp_token_signer_pda
+                },
+                // Sign with PDA seeds
+                &[dapp_token_signer_seeds],
+            ),
+            // Additional args (amount, etc)
+            100000000000, // amount
+        )?;
+
+        // Q: What is initializeMint2()?
 
         Ok(())
     }
@@ -312,7 +378,6 @@ pub struct MintDappSpl<'info> {
     // #[account(mut)]
     // pub user: Signer<'info>, // wallet
 
-
     // U: Bare would use `init_if_needed` instead of creating from Client
     // #[account(init_if_needed,
     //     payer = signer,
@@ -362,6 +427,39 @@ pub struct MintDappSpl<'info> {
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, token::Token>,
     // pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+}
+
+// U: Going for CLI+Program Approach. Something like:
+// NOTE Brainstorming CLI + PDA (but no PDA data account ie dappTokenManager)
+// 1. CLI: Create Mint
+// 2. Client: Derive a PDA address (not account!) with Mint + Program
+//    - IMPORTANT: MUST find PDA from CLIENT!
+// 3. CLI: Set mint and freeze authority to PDA
+// 4. Program: Create (if needed) user ATA with create_idempotent()
+// 5. Program: mint_to() + PDA signer
+#[derive(Accounts)]
+pub struct MintDappTokenWithCliAndProgram<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+    // U: Bare would use `init_if_needed` instead of creating from Client
+    // Q: What macro attributes needed if create_idempotent()? init or mut?
+    #[account(
+        init,
+        payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = user
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    // U: MUST make the 'mint' account writable since supply will be mutated!
+    // Q: Any constraints to add? Don't have a PDA account (just address)
+    #[account(mut)]
+    pub mint: Account<'info, Mint>,
+
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, token::Token>,
+    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
 }
 
 // U: Adding another high-level account to enable multiple escrows created by same/single wallet
@@ -429,10 +527,6 @@ impl DappTokenManager {
     // }
 }
 
-
-
-
-
 // #[cfg(test)]
 // mod tests {
 //     use super::*;
@@ -483,4 +577,3 @@ impl DappTokenManager {
 //         assert_eq!(20, funds.pending_amount().unwrap());
 //     }
 // }
-
