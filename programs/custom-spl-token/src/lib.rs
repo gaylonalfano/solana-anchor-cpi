@@ -226,6 +226,7 @@ pub mod custom_spl_token {
         Ok(())
     }
 
+    // ------------------ CLI + Program (Fail) --------------
     // U: Need to consider init the Mint directly inside program
     // Could modify my InitializeDappSplWithKeypair
     // pub fn mint_dapp_token_with_cli_and_program(
@@ -295,6 +296,72 @@ pub mod custom_spl_token {
 
     //     Ok(())
     // }
+
+
+    // -------------- Program ONLY Version2 --------------
+    pub fn initialize_dapp_token_manager_v2(ctx: Context<InitializeDappTokenManager>) -> Result<()> {
+        msg!("1. Create dapp_token_manager_v2 PDA account...");
+        let dapp_token_manager_v2 = DappTokenManagerV2::new(
+            ctx.accounts.authority.key(),
+            // NOTE Not using mint.key() as seed since dunno how
+            // to init both and use (Chicken or Egg scenatio)
+            // ctx.accounts.mint.key(),
+            // NOTE bumps.get("account_name"), NOT seed!
+            *ctx.bumps
+                .get("dapp_token_manager_v2")
+                .expect("Bump not found."),
+        );
+
+
+        // Update the inner account data
+        // Q: clone() or no? Seen both ways...
+        ctx.accounts
+            .dapp_token_manager_v2
+            .set_inner(dapp_token_manager_v2.clone());
+        msg!("DappTokenManagerV2: {:?}", &dapp_token_manager_v2);
+
+        Ok(())
+    }
+
+    pub fn initialize_dapp_token_mint_v2(ctx: Context<InitializeDappTokenMint>) -> Result<()> {
+        // Q: What do I put in here if it's getting created
+        // thanks to 'init'? Don't think I need to manually
+        // call token::initialize_mint()...
+        // Do I need to validate anything else? 
+        // require_keys_eq!(
+        //     ctx.accounts.mint.mint_authority,
+        //     ctx.accounts.dapp_token_manager_v2.key()
+        // );
+
+       Ok(()) 
+    }
+
+    pub fn mint_dapp_token_supply_v2(ctx: Context<MintDappTokenSupply>) -> Result<()> {
+        // U: MUST make the 'mint' account writable since supply will be mutated!
+        #[account(
+            mut,
+            constraint = mint.key() == dapp_token_manager_v2.mint
+        )]
+        pub mint: Account<'info, Mint>,
+
+        #[account(
+            mut,
+            seeds = [
+                DappTokenManagerV2::SEED_PREFIX.as_ref(),
+                // mint.key().as_ref(),
+            ],
+            bump = dapp_token_manager_v2.bump
+        )]
+        pub dapp_token_manager_v2: Account<'info, DappTokenManagerV1>,
+
+        pub rent: Sysvar<'info, Rent>,
+        pub system_program: Program<'info, System>,
+        pub token_program: Program<'info, token::Token>,
+        pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+
+        Ok(())
+    }
+
 }
 
 #[derive(Accounts)]
