@@ -16,7 +16,7 @@ import { CustomSplToken } from "../target/types/custom_spl_token";
 // TIL:
 // - PDAs can only sign from within program context!
 // - The Mint account MUST be WRITABLE (mut) to mint supply!
-// - Need globals for dappTokenManager, dappTokenMint
+// - Need globals for dappTokenManagerV1, dappTokenMintV1
 // - Error: Failed to resolve options IDL -- check input accounts types!
 // - InstructionError: IllegalOwner - Provided owner is not allowed (minting to user1TokenAccount)
 // - SK Hooks (see Notion)
@@ -47,20 +47,20 @@ describe("custom-spl-token", () => {
   // when I want to have ONE SINGLE token for the program
   const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   console.log(`New token (mint): ${mintKeypair.publicKey}`);
-  // Create dappTokenMint global to track
-  let dappTokenMint: Mint;
+  // Create dappTokenMintV1 global to track
+  let dappTokenMintV1: Mint;
 
-  // Create dappTokenManager for program
-  let dappTokenManager: anchor.IdlAccounts<CustomSplToken>['dappTokenManager'];
-  // - Derive a PDA between mint + program for dappTokenManager
-  const [dappTokenManagerPda, dappTokenManagerBump] = anchor.utils.publicKey.findProgramAddressSync(
+  // Create dappTokenManagerV1 for program
+  let dappTokenManagerV1: anchor.IdlAccounts<CustomSplToken>['dappTokenManagerV1'];
+  // - Derive a PDA between mint + program for dappTokenManagerV1
+  const [dappTokenManagerV1Pda, dappTokenManagerBump] = anchor.utils.publicKey.findProgramAddressSync(
     [
-      Buffer.from("dapp-token-manager"),
+      Buffer.from("dapp-token-manager-v1"),
       mintKeypair.publicKey.toBuffer(),
     ],
     program.programId
   )
-  console.log("dappTokenManagerPda: ", dappTokenManagerPda);
+  console.log("dappTokenManagerV1Pda: ", dappTokenManagerV1Pda);
   const ONE_TOKEN_AMOUNT_RAW = 1000000000;
   const MINT_AMOUNT_RAW = ONE_TOKEN_AMOUNT_RAW * 100; // 100 full tokens
   const MINT_AMOUNT_UI = 100; // 100 full tokens
@@ -168,15 +168,15 @@ describe("custom-spl-token", () => {
   });
 
 
-  it("Create dappTokenManager", async () => {
+  it("Create dappTokenManagerV1", async () => {
     // Get a mint address
     // pub const SEED_PREFIX: &'static str = "dapp-token-manager";
 
     const tx = await program.methods
-      .initializeDappSpl()
+      .initializeDappSplWithKeypair()
       .accounts({
         mint: mintKeypair.publicKey,
-        dappTokenManager: dappTokenManagerPda,
+        dappTokenManagerV1: dappTokenManagerV1Pda,
         authority: wallet.publicKey,
       })
       // NOTE I was right that the mintKeypair and wallet are signers,
@@ -186,19 +186,19 @@ describe("custom-spl-token", () => {
     console.log("tx:", tx);
 
     // Check that SPL was created and supply minted
-    dappTokenManager = await program.account.dappTokenManager.fetch(
-      dappTokenManagerPda
+    dappTokenManagerV1 = await program.account.dappTokenManagerV1.fetch(
+      dappTokenManagerV1Pda
     );
-    console.log("dappTokenManager: ", dappTokenManager);
+    console.log("dappTokenManagerV1: ", dappTokenManagerV1);
 
-    dappTokenMint = await getMint(provider.connection, dappTokenManager.mint);
-    console.log("dappSplMint: ", dappTokenMint);
+    dappTokenMintV1 = await getMint(provider.connection, dappTokenManagerV1.mint);
+    console.log("dappSplMint: ", dappTokenMintV1);
 
-    expect(dappTokenManager.mint.toBase58()).to.equal(mintKeypair.publicKey.toBase58());
-    expect(dappTokenManager.totalUserMintCount.toNumber()).to.equal(0);
-    expect(dappTokenManager.bump).to.equal(dappTokenManagerBump);
-    expect(dappTokenMint.mintAuthority.toBase58()).to.equal(dappTokenManagerPda.toBase58());
-    expect(dappTokenMint.freezeAuthority.toBase58()).to.equal(dappTokenManagerPda.toBase58());
+    expect(dappTokenManagerV1.mint.toBase58()).to.equal(mintKeypair.publicKey.toBase58());
+    expect(dappTokenManagerV1.totalUserMintCount.toNumber()).to.equal(0);
+    expect(dappTokenManagerV1.bump).to.equal(dappTokenManagerBump);
+    expect(dappTokenMintV1.mintAuthority.toBase58()).to.equal(dappTokenManagerV1Pda.toBase58());
+    expect(dappTokenMintV1.freezeAuthority.toBase58()).to.equal(dappTokenManagerV1Pda.toBase58());
   });
 
   it("Mint dappSPL Supply to user1Wallet", async () => {
@@ -213,8 +213,8 @@ describe("custom-spl-token", () => {
       //   provider.connection,
       //   user1Wallet, // payer (Keypair/Payer)
       //   // mintKeypair.publicKey, // mint
-      //   dappTokenManager.mint, // mint
-      //   // dappTokenMint.address, // mint
+      //   dappTokenManagerV1.mint, // mint
+      //   // dappTokenMintV1.address, // mint
       //   user1Wallet.publicKey, // owner
       //   false, // allowOwnerOffCurse (for PDAs)
       //   "confirmed", // commitment
@@ -281,7 +281,7 @@ describe("custom-spl-token", () => {
     // but Escrow accept() does use client getOrCreateAssociatedTokenAccount()
     // U: PROGRESS. I removed program associated_token::create() ix from
     // inside mint_dapp_spl(). Also replaced mintKeypair.publicKey
-    // with dappTokenManager.mint and this was better! The user1TokenAccount
+    // with dappTokenManagerV1.mint and this was better! The user1TokenAccount
     // was actually created (see logs). Now encountering a raw constraint
     // violation error for user_token_account. I think the .mint addresses
     // match, but the user_token_account.owner == user.key() constraint may fail
@@ -309,24 +309,24 @@ describe("custom-spl-token", () => {
       .accounts({
         // user: user1Wallet.publicKey,
         mint: mintKeypair.publicKey,
-        dappTokenManager: dappTokenManagerPda,
+        dappTokenManagerV1: dappTokenManagerV1Pda,
         userTokenAccount: user1TokenAccount as anchor.web3.PublicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
         // associatedTokenProgram
       })
       // .signers([user1Wallet])
-      // .signers([]) // NOTE: dappTokenManager PDA signs inside program
+      // .signers([]) // NOTE: dappTokenManagerV1 PDA signs inside program
       .rpc({ skipPreflight: true }); // Get better logs
     console.log("TxHash ::", tx);
 
     // Fetch updated accounts data
-    dappTokenManager = await program.account.dappTokenManager.fetch(dappTokenManagerPda);
+    dappTokenManagerV1 = await program.account.dappTokenManagerV1.fetch(dappTokenManagerV1Pda);
 
-    dappTokenMint = await getMint(
+    dappTokenMintV1 = await getMint(
       provider.connection,
       mintKeypair.publicKey
     );
-    console.log('dappTokenMint: ', dappTokenMint);
+    console.log('dappTokenMintV1: ', dappTokenMintV1);
 
     // Q: How to work with type 'bigint'?
     // A: Use * operator and express in whole numbers of use Number()
@@ -348,13 +348,13 @@ describe("custom-spl-token", () => {
 
 
     // Example 3:
-    const supplyUiAmountStr = (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 100
+    const supplyUiAmountStr = (dappTokenMintV1.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 100
     console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 100
     console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
     console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
-    console.log('dappTokenMint.supply.valueOf(): ', dappTokenMint.supply.valueOf()); // 100000000000n
-    console.log('dappTokenMint.supply.toString(): ', dappTokenMint.supply.toString()); // 100000000000
-    console.log('dappTokenMint.supply.valueOf(): ', dappTokenMint.supply.toString()); // 100000000000
+    console.log('dappTokenMintV1.supply.valueOf(): ', dappTokenMintV1.supply.valueOf()); // 100000000000n
+    console.log('dappTokenMintV1.supply.toString(): ', dappTokenMintV1.supply.toString()); // 100000000000
+    console.log('dappTokenMintV1.supply.valueOf(): ', dappTokenMintV1.supply.toString()); // 100000000000
 
     const currentUser1TokenAccountBalance = await provider.connection.getTokenAccountBalance(
       user1TokenAccount
@@ -370,10 +370,10 @@ describe("custom-spl-token", () => {
 
     // - Mint supply should be MINT_AMOUNT 
     expect(
-      (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+      (dappTokenMintV1.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
     ).to.equal(MINT_AMOUNT_UI.toString());
-    // - dappTokenManager.totalUserMintCount is 1
-    expect(dappTokenManager.totalUserMintCount.toNumber()).to.equal(1);
+    // - dappTokenManagerV1.totalUserMintCount is 1
+    expect(dappTokenManagerV1.totalUserMintCount.toNumber()).to.equal(1);
     // - user1TokenAccountBalance is MINT_AMOUNT
     expect(currentUser1TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI);
     expect((currentUser1TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal(MINT_AMOUNT_UI.toString());

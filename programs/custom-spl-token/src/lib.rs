@@ -21,7 +21,7 @@ use {
 // NOTE General sequence I believe:
 // 1. Client: Generate Mint Keypair
 // 2. Program: SystemProgram CreateAccount (will have mint address from CLIENT Keypair)
-// 3. Program: Create DappTokenManager PDA
+// 3. Program: Create DappTokenManagerV1 PDA
 // 4. Program: InitializeMint using mint + PDA & set authority = PDA
 // 5. Client: User connects and needs mint supply
 // 6. Program: Mint supply using CPI+seeds to PDA user_token_account
@@ -30,9 +30,9 @@ use {
 // the tasks involved:
 // 1. Client: Generate Mint Keypair
 //    - NOTE: Could consider creating with CLI or in program
-// 2. Client: Derive dappTokenManager PDA with Mint + Program
+// 2. Client: Derive DappTokenManagerV1 PDA with Mint + Program
 // 3. Program: SystemProgram CreateAccount for Mint
-// 4. Program: Create DappTokenManager PDA data account
+// 4. Program: Create DappTokenManagerV1 PDA data account
 // 5. Program: InitializeMint using mint + PDA & set authority = PDA
 // 6. Client: User connects and needs mint supply
 // 7. Client: Create (if needed) user's ATA
@@ -52,7 +52,7 @@ declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
 pub mod custom_spl_token {
     use super::*;
 
-    pub fn initialize_dapp_spl(ctx: Context<InitializeDappSpl>) -> Result<()> {
+    pub fn initialize_dapp_spl_with_keypair(ctx: Context<InitializeDappSplWithKeypair>) -> Result<()> {
         // Invoke a Cross-program Invocation:
         // NOTE Hits another program by sending required accounts
         // Q: Is this the spl-token create-account <TOKEN_ADDRESS> command?
@@ -89,25 +89,25 @@ pub mod custom_spl_token {
 
         msg!("2. Create dApp + mint PDA...");
         // Q: Can I do this here or should I have a separate ix method?
-        let dapp_token_manager = DappTokenManager::new(
+        let dapp_token_manager_v1 = DappTokenManagerV1::new(
             ctx.accounts.mint.key(),
             ctx.accounts.authority.key(),
             // NOTE bumps.get("account_name"), NOT seed!
             *ctx.bumps
-                .get("dapp_token_manager")
+                .get("dapp_token_manager_v1")
                 .expect("Bump not found."),
         );
         // Update the inner account data
         // Q: clone() or no?
         ctx.accounts
-            .dapp_token_manager
-            .set_inner(dapp_token_manager.clone());
-        msg!("DappTokenManager: {:?}", &dapp_token_manager);
+            .dapp_token_manager_v1
+            .set_inner(dapp_token_manager_v1.clone());
+        msg!("DappTokenManagerV1: {:?}", &dapp_token_manager_v1);
 
         // Q: Is this the spl-token create-account <TOKEN_ADDRESS> command?
         // A: NO! This is spl-token create-token --decimals 0
         // NOTE --decimals 0 is the protocol for NFTs
-        msg!("3. Initializing mint account as a mint and set authority to dapp_token_manager...");
+        msg!("3. Initializing mint account as a mint and set authority to dapp_token_manager_v1...");
         // Q: Can I use PDA to sign?
         // msg!("Mint: {}", &ctx.accounts.mint.key());
         // token::initialize_mint(
@@ -138,19 +138,19 @@ pub mod custom_spl_token {
                     mint: ctx.accounts.mint.to_account_info(),
                     rent: ctx.accounts.rent.to_account_info(),
                 },
-                // Syntax 1: Raw sign with dapp_token_manager seeds
+                // Syntax 1: Raw sign with dapp_token_manager_v1 seeds
                 &[&[
-                    DappTokenManager::SEED_PREFIX.as_bytes(),
+                    DappTokenManagerV1::SEED_PREFIX.as_bytes(),
                     ctx.accounts.mint.key().as_ref(),
-                    &[ctx.accounts.dapp_token_manager.bump],
+                    &[ctx.accounts.dapp_token_manager_v1.bump],
                 ]],
                 // Syntax 2: Using helper impl fn instead
-                // &[&ctx.accounts.dapp_token_manager.dapp_token_manager_seeds()], // &[&[&[u8]; 3]]
+                // &[&ctx.accounts.dapp_token_manager_v1.dapp_token_manager_v1_seeds()], // &[&[&[u8]; 3]]
             ),
             9, // decimals
-            // Setting dapp_token_manager as mint authority
-            &ctx.accounts.dapp_token_manager.key(), // mint authority
-            Some(&ctx.accounts.dapp_token_manager.key()), // freeze authority
+            // Setting dapp_token_manager_v1 as mint authority
+            &ctx.accounts.dapp_token_manager_v1.key(), // mint authority
+            Some(&ctx.accounts.dapp_token_manager_v1.key()), // freeze authority
         )?;
         msg!(
             "Mint initialized! {:?}",
@@ -196,7 +196,7 @@ pub mod custom_spl_token {
         // A: Yes! This mints (increases supply of Token) and transfers new tokens
         // to owner's token account (default recipient token address) balance
         msg!(
-            "2. Minting supply to the token account (signing via dapp_token_manager PDA seeds)..."
+            "2. Minting supply to the token account (signing via dapp_token_manager_v1 PDA seeds)..."
         );
         // msg!("Mint: {}", &ctx.accounts.mint.key());
         // msg!("Token Address: {}", &ctx.accounts.token_account.to_account_info().key());
@@ -207,99 +207,98 @@ pub mod custom_spl_token {
                     // Instructions with accounts to pass to program
                     mint: ctx.accounts.mint.to_account_info(),
                     to: ctx.accounts.user_token_account.to_account_info(),
-                    authority: ctx.accounts.dapp_token_manager.to_account_info(),
+                    authority: ctx.accounts.dapp_token_manager_v1.to_account_info(),
                 },
                 // Sign with PDA seeds
                 &[&[
-                    DappTokenManager::SEED_PREFIX.as_bytes(),
+                    DappTokenManagerV1::SEED_PREFIX.as_bytes(),
                     ctx.accounts.mint.key().as_ref(),
-                    &[ctx.accounts.dapp_token_manager.bump],
+                    &[ctx.accounts.dapp_token_manager_v1.bump],
                 ]],
             ),
             // Additonal args
-            DappTokenManager::MINT_AMOUNT_RAW, // amount
+            DappTokenManagerV1::MINT_AMOUNT_RAW, // amount
         )?;
 
         // Update total_user_mint_count
-        ctx.accounts.dapp_token_manager.total_user_mint_count += 1;
+        ctx.accounts.dapp_token_manager_v1.total_user_mint_count += 1;
 
         Ok(())
     }
 
-    // ========== TODO =========
-    // Need to consider init the Mint directly inside program
-    // Could modify my InitializeDappSpl
-    pub fn mint_dapp_token_with_cli_and_program(
-        ctx: Context<MintDappTokenWithCliAndProgram>,
-    ) -> Result<()> {
-        // NOTE Mint created with CLI. Just need to create ATA and mint_to()
-        // const cli_dapp_token_address = Pubkey::new()
-        // Q: Where do I derive the PDA? Program or Client?
-        // REF: https://docs.rs/anchor-lang/latest/anchor_lang/prelude/struct.Pubkey.html#method.find_program_address
-        // A: CLIENT! IMPORTANT: Below will give me an address,
-        // BUT, the IX needs an ACCOUNT to sign! 
-        // ALL accounts, due to design, should be passed 
-        // to initial instruction! Therefore, I need to pass
-        // this PDA from the CLIENT!
-        // NOTE: I don't need to initialize the account or anything.
-        // I just pass it and that's it. My program IX will do
-        // the rest of whatever else is needed.
-        // let (dapp_token_signer_pda, dapp_token_signer_bump) = Pubkey::find_program_address(
-        //     &[
-        //         b"dapp-token-mint-authority",
-        //         ctx.accounts.mint.key().as_ref(),
-        //     ],
-        //     &ctx.program_id,
-        // );
-        // let dapp_token_signer_seeds = &[
-        //     "dapp-token-mint-authority".as_bytes(),
-        //     &[dapp_token_signer_bump],
-        // ];
+    // U: Need to consider init the Mint directly inside program
+    // Could modify my InitializeDappSplWithKeypair
+    // pub fn mint_dapp_token_with_cli_and_program(
+    //     ctx: Context<MintDappTokenWithCliAndProgram>,
+    // ) -> Result<()> {
+    //     // NOTE Mint created with CLI. Just need to create ATA and mint_to()
+    //     // const cli_dapp_token_address = Pubkey::new()
+    //     // Q: Where do I derive the PDA? Program or Client?
+    //     // REF: https://docs.rs/anchor-lang/latest/anchor_lang/prelude/struct.Pubkey.html#method.find_program_address
+    //     // A: CLIENT! IMPORTANT: Below will give me an address,
+    //     // BUT, the IX needs an ACCOUNT to sign! 
+    //     // ALL accounts, due to design, should be passed 
+    //     // to initial instruction! Therefore, I need to pass
+    //     // this PDA from the CLIENT!
+    //     // NOTE: I don't need to initialize the account or anything.
+    //     // I just pass it and that's it. My program IX will do
+    //     // the rest of whatever else is needed.
+    //     // let (dapp_token_signer_pda, dapp_token_signer_bump) = Pubkey::find_program_address(
+    //     //     &[
+    //     //         b"dapp-token-mint-authority",
+    //     //         ctx.accounts.mint.key().as_ref(),
+    //     //     ],
+    //     //     &ctx.program_id,
+    //     // );
+    //     // let dapp_token_signer_seeds = &[
+    //     //     "dapp-token-mint-authority".as_bytes(),
+    //     //     &[dapp_token_signer_bump],
+    //     // ];
 
-        msg!("1. Creating associated token account for user (if needed)...");
-        // Q: create_idempotent need 'init' or 'mut' for user_token_account
-        // inside validation struct? My guess is 'init'
-        associated_token::create_idempotent(CpiContext::new(
-            ctx.accounts.associated_token_program.to_account_info(),
-            associated_token::Create {
-                associated_token: ctx.accounts.user_token_account.to_account_info(),
-                authority: ctx.accounts.user.to_account_info(),
-                mint: ctx.accounts.mint.to_account_info(),
-                payer: ctx.accounts.user.to_account_info(),
-                system_program: ctx.accounts.system_program.to_account_info(),
-                token_program: ctx.accounts.token_program.to_account_info(),
-            },
-        ))?;
+    //     msg!("1. Creating associated token account for user (if needed)...");
+    //     // Q: create_idempotent need 'init' or 'mut' for user_token_account
+    //     // inside validation struct? My guess is 'init'
+    //     associated_token::create_idempotent(CpiContext::new(
+    //         ctx.accounts.associated_token_program.to_account_info(),
+    //         associated_token::Create {
+    //             associated_token: ctx.accounts.user_token_account.to_account_info(),
+    //             authority: ctx.accounts.user.to_account_info(),
+    //             mint: ctx.accounts.mint.to_account_info(),
+    //             payer: ctx.accounts.user.to_account_info(),
+    //             system_program: ctx.accounts.system_program.to_account_info(),
+    //             token_program: ctx.accounts.token_program.to_account_info(),
+    //         },
+    //     ))?;
 
-        msg!("2. Minting supply to the token account (signing via PDA)...");
-        token::mint_to(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                token::MintTo {
-                    mint: ctx.accounts.mint.to_account_info(),
-                    to: ctx.accounts.user_token_account.to_account_info(),
-                    // Q: Can I pass just PDA pubkey? Only have address, no account!
-                    // I will need to set mint.mint_authority = PDA before this part...
-                    // A: NOPE! Must be an ACCOUNT! 
-                    // Q: Is Fedoras' 'nft_mint' a PDA? 
-                    // A: No, 'nft_mint' is a Keypair
-                    authority: dapp_token_signer_pda
-                },
-                // Sign with PDA seeds
-                &[dapp_token_signer_seeds],
-            ),
-            // Additional args (amount, etc)
-            100000000000, // amount
-        )?;
+    //     msg!("2. Minting supply to the token account (signing via PDA)...");
+    //     token::mint_to(
+    //         CpiContext::new_with_signer(
+    //             ctx.accounts.token_program.to_account_info(),
+    //             token::MintTo {
+    //                 mint: ctx.accounts.mint.to_account_info(),
+    //                 to: ctx.accounts.user_token_account.to_account_info(),
+    //                 // Q: Can I pass just PDA pubkey? Only have address, no account!
+    //                 // I will need to set mint.mint_authority = PDA before this part...
+    //                 // A: NOPE! Must be an ACCOUNT! 
+    //                 // Q: Is Fedoras' 'nft_mint' a PDA? 
+    //                 // A: No, 'nft_mint' is a Keypair
+    //                 authority: dapp_token_signer_pda
+    //             },
+    //             // Sign with PDA seeds
+    //             &[dapp_token_signer_seeds],
+    //         ),
+    //         // Additional args (amount, etc)
+    //         100000000000, // amount
+    //     )?;
 
-        // Q: What is initializeMint2()?
+    //     // Q: What is initializeMint2()?
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }
 
 #[derive(Accounts)]
-pub struct InitializeDappSpl<'info> {
+pub struct InitializeDappSplWithKeypair<'info> {
     // Client: Need to pass a Keypair
     #[account(mut)]
     pub mint: Signer<'info>,
@@ -308,13 +307,13 @@ pub struct InitializeDappSpl<'info> {
     // instead of passing a Keypair.
     // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/programs/token-with-metadata/src/lib.rs
     // Q: Not sure if I can do this inside same ix validation struct,
-    // since dapp_token_manager is also getting initialized in same ix.
+    // since dapp_token_manager_v1 is also getting initialized in same ix.
     // A: Nope. Maybe with init_if_needed but nice to know there's a variant out there
     // #[account(
     //     init,
     //     payer = authority,
     //     mint::decimals = 9,
-    //     mint::authority = dapp_token_manager,
+    //     mint::authority = dapp_token_manager_v1,
     // )]
     // pub mint: Account<'info, Mint>,
 
@@ -322,9 +321,9 @@ pub struct InitializeDappSpl<'info> {
     #[account(
         init,
         payer = authority,
-        space = DappTokenManager::ACCOUNT_SPACE,
+        space = DappTokenManagerV1::ACCOUNT_SPACE,
         seeds = [
-            DappTokenManager::SEED_PREFIX.as_ref(),
+            DappTokenManagerV1::SEED_PREFIX.as_ref(),
             mint.key().as_ref(),
             // Q: How to get current programId?
             // I can access it in ix using ctx.programId, but dunno how here...
@@ -332,16 +331,10 @@ pub struct InitializeDappSpl<'info> {
         ],
         bump
     )]
-    pub dapp_token_manager: Account<'info, DappTokenManager>,
+    pub dapp_token_manager_v1: Account<'info, DappTokenManagerV1>,
 
-    // U: Don't think I even need an ATA for DappTokenManager PDA. Can simply mint supply
-    // #[account(
-    //     init,
-    //     payer = authority,
-    //     token::mint = mint, // Setting the .mint property
-    //     token::authority = dapp_token_manager, // Setting the .authority property to be dapp_token_manager PDA account address
-    // )]
-    // pub token_account: Account<'info, TokenAccount>,
+    // U: Don't think I even need an ATA for DappTokenManagerV1 PDA. 
+    // A: Yep, can mint_to() without needing an ATA inside DappTokenManagerV1
     // Client: This is connected wallet
     #[account(mut)]
     pub authority: Signer<'info>, // The wallet (fee payer)
@@ -362,18 +355,18 @@ pub struct MintDappSpl<'info> {
     // times we mint supply to same wallet. Thinking 100k per ledger
 
     // TODOS:
-    // - DONE Bring in dapp_token_manager account
+    // - DONE Bring in dapp_token_manager_v1 account
     // - DONE Bring in user (wallet) account
     // - DONE rent, system_program, token_program, associated_token
     // - Determine the names for the user wallet (user, payer, authority) -- Choose one!
     // - Build the actual instruction method
     // - Checks/constraints to consider:
     //   - Q: How to prevent one user getting all the supply?
-    //   - mint.key() == dapp_token_manager.mint
-    //   - user_token_account.mint == dapp_token_manager.mint
+    //   - mint.key() == dapp_token_manager_v1.mint
+    //   - user_token_account.mint == dapp_token_manager_v1.mint
     //   - user_token_account.owner == user.key()
-    //   - mint.mint_authority == dapp_token_manager
-    //   - mint.freeze_authority == dapp_token_manager
+    //   - mint.mint_authority == dapp_token_manager_v1
+    //   - mint.freeze_authority == dapp_token_manager_v1
     //   - mint.supply < mint.cap
     // #[account(mut)]
     // pub user: Signer<'info>, // wallet
@@ -388,19 +381,19 @@ pub struct MintDappSpl<'info> {
     // U: MUST make the 'mint' account writable since supply will be mutated!
     #[account(
         mut,
-        constraint = mint.key() == dapp_token_manager.mint
+        constraint = mint.key() == dapp_token_manager_v1.mint
     )]
     pub mint: Account<'info, Mint>,
 
     #[account(
         mut,
         seeds = [
-            DappTokenManager::SEED_PREFIX.as_ref(),
+            DappTokenManagerV1::SEED_PREFIX.as_ref(),
             mint.key().as_ref(),
         ],
-        bump = dapp_token_manager.bump
+        bump = dapp_token_manager_v1.bump
     )]
-    pub dapp_token_manager: Account<'info, DappTokenManager>,
+    pub dapp_token_manager_v1: Account<'info, DappTokenManagerV1>,
 
     // Q: I need to init this the first time for the user
     // May want to consider the 'init_if_needed' feature
@@ -429,8 +422,10 @@ pub struct MintDappSpl<'info> {
     // pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
 }
 
+// ========== Above works. Trying different variations below ==========
+// ----- CLI + Program Approach -----
 // U: Going for CLI+Program Approach. Something like:
-// NOTE Brainstorming CLI + PDA (but no PDA data account ie dappTokenManager)
+// NOTE Brainstorming CLI + PDA (but no PDA data account ie DappTokenManagerV1)
 // 1. CLI: Create Mint
 // 2. Client: Derive a PDA address (not account!) with Mint + Program
 //    - IMPORTANT: MUST find PDA from CLIENT!
@@ -462,12 +457,133 @@ pub struct MintDappTokenWithCliAndProgram<'info> {
     pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
 }
 
+// ------------- Program ONLY Approach -------------
+// NOTE: Creating Mint and ATA inside Program instead
+// Going to break it up into a few instructions:
+// 1. Program: Create Mint (using 'init' and Mint -- pass Keypair from Client)
+//      - NOTE: Can set authority, decimals, etc. in this step
+// 2. Program: Create DappTokenManagerV1 PDA account
+// 3. Program: Create (if needed) user ATA
+// 4. Program: MintTo + PDA signer
+// Q: Should I create DTManager first and then DTMint?
+// DTManager doesn't have to use mint key as seed...
+
+
+#[derive(Accounts)]
+pub struct InitializeDappTokenManager<'info> {
+    // NOTE: Need to findProgramAddressSync() for PDA
+    // and send from CLIENT!
+    #[account(
+        init,
+        payer = authority,
+        space = DappTokenManagerV2::ACCOUNT_SPACE,
+        seeds = [
+            DappTokenManagerV2::SEED_PREFIX.as_ref(),
+            // NOTE Removing mint.key() seed since Mint
+            // gets created next
+        ],
+        bump
+    )]
+    pub dapp_token_manager_v2: Account<'info, DappTokenManagerV2>,
+
+    // U: Don't think I even need an ATA for DappTokenManagerV1 PDA. 
+    // A: Yep, can mint_to() without needing an ATA inside DappTokenManagerV1
+    // Client: This is connected wallet
+    #[account(mut)]
+    pub authority: Signer<'info>, // The wallet (fee payer)
+
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, token::Token>,
+
+}
+
+#[derive(Accounts)]
+pub struct InitializeDappTokenMint<'info> {
+    // Q: By initializing mint inside program using 'init',
+    // guess I just need a payer to sign? Or, probably still
+    // need to add client Keypair as a signer in frontend?
+    // U: The token-with-metadata repo does not have the mintKeypair
+    // as a signer in the client, FYI.
+    // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/tests/token-with-metadata.ts
+    #[account(
+        init,
+        payer = authority,
+        mint::decimals = 9,
+        mint::authority = dapp_token_manager_v2,
+        mint::freeze_authority = dapp_token_manager_v2,
+    )]
+    pub mint: Account<'info, Mint>,
+
+    // Q: Do I need to pass DTM if only need its address?
+    // U: I think so since it can find the PDA. But, I may
+    // be able to pass DTM address as a separate IX argument...
+    #[account(
+        mut,
+        seeds = [
+            DappTokenManagerV2::SEED_PREFIX.as_ref(),
+            // Q: Can I access mint.key() since mint is 
+            // getting initialized in this same IX?
+            // mint.key().as_ref(),
+            // U: I removed 'mint' as a seed, but curious...
+        ],
+        bump = dapp_token_manager_v2.bump
+    )]
+    pub dapp_token_manager_v2: Account<'info, DappTokenManagerV2>,
+
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    pub token_program: Program<'info, token::Token>,
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>,
+
+}
+
+
+#[derive(Accounts)]
+pub struct MintDappTokenSupply<'info> {
+    // U: Bare would use `init_if_needed` instead of creating from Client
+    // NOTE Need to add features = ["init-if-needed"] in Cargo.toml
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = user
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    // IMPORTANT: MUST make the 'mint' account writable since supply will be mutated!
+    #[account(
+        mut,
+        constraint = mint.key() == dapp_token_manager_v2.mint
+    )]
+    pub mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        seeds = [
+            DappTokenManagerV2::SEED_PREFIX.as_ref(),
+        ],
+        bump = dapp_token_manager_v2.bump
+    )]
+    pub dapp_token_manager_v2: Account<'info, DappTokenManagerV2>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    pub rent: Sysvar<'info, Rent>,
+    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+    pub token_program: Program<'info, token::Token>,
+    pub system_program: Program<'info, System>,
+}
+
 // U: Adding another high-level account to enable multiple escrows created by same/single wallet
 // NOTE: Technically don't need to create a data account for the PDA. This is only if I want
 // to store some data like bump, etc.
 #[account]
 #[derive(Default, Debug)]
-pub struct DappTokenManager {
+pub struct DappTokenManagerV1 {
     // 8 bytes for Discrimator
     pub mint: Pubkey,               // 32 bytes
     pub authority: Pubkey,          // 32 bytes Initializer/Payer
@@ -483,29 +599,34 @@ const AUTHORITY_LENGTH: usize = 32; // Pubkey
 const TOTAL_USER_MINT_COUNT_LENGTH: usize = 8; // u64
 const BUMP_LENGTH: usize = 1;
 
-impl DappTokenManager {
+impl DappTokenManagerV1 {
     pub const ACCOUNT_SPACE: usize = DISCRIMINATOR_LENGTH
         + MINT_LENGTH
         + AUTHORITY_LENGTH
         + TOTAL_USER_MINT_COUNT_LENGTH
         + BUMP_LENGTH;
 
-    pub const SEED_PREFIX: &'static str = "dapp-token-manager";
+    pub const SEED_PREFIX: &'static str = "dapp-token-manager-v1";
     // NOTE To get MAX of type: u32::MAX
     // Q: Need &'static lifetime for u64?
     pub const MINT_AMOUNT_RAW: u64 = 1000000000 * 100; // 100 Tokens
     pub const MINT_AMOUNT_UI: u64 = 100; // 100 Tokens
 
     pub fn new(mint: Pubkey, authority: Pubkey, bump: u8) -> Self {
-        DappTokenManager {
+        DappTokenManagerV1 {
             mint,
             authority,
+            // Q: Could I add a mint_number field in Ledger?
+            // Or, perhaps create a Profile struct with total_mint_count as well?
+            // The idea is to limit a user wallet from minting too much.
+            // Maybe I could check that number of Ledgers associated
+            // with wallet is == profile.total_mint_count
             total_user_mint_count: 0,
             bump,
         }
     }
 
-    // pub fn dapp_token_manager_seeds(&self) -> [&[u8]; 3] {
+    // pub fn dapp_token_manager_v1_seeds(&self) -> [&[u8]; 3] {
     //     // REF: gem_bank::vault
     //     // [self.authority_seed.as_ref(), &self.authority_bump_seed]
     //     // NOTE: The above is signed like this:
@@ -513,7 +634,7 @@ impl DappTokenManager {
 
     //
     //     [
-    //         DappTokenManager::SEED_PREFIX.as_bytes(), // &[u8]
+    //         DappTokenManagerV1::SEED_PREFIX.as_bytes(), // &[u8]
     //         // Self::SEED_PREFIX.as_bytes(), // &[u8]
     //         self.mint.as_ref(), // &[u8]
     //         // FIXME 'temporary value created'
@@ -525,6 +646,48 @@ impl DappTokenManager {
     // pub fn mint_to(&self, to: Pubkey) {
     //     token::transfer(, amount)
     // }
+
+}
+
+// Adding another version that doesn't use mint.key()
+// as a seed. May even store the Mint account inside
+#[account]
+#[derive(Default, Debug)]
+pub struct DappTokenManagerV2 {
+    // 8 bytes for Discrimator
+    pub mint: Pubkey,               // 32 bytes
+    pub authority: Pubkey,          // 32 bytes Initializer/Payer
+    pub total_user_mint_count: u64, // 8 bytes
+    pub bump: u8,                   // 1 byte
+}
+
+impl DappTokenManagerV2 {
+    pub const ACCOUNT_SPACE: usize = DISCRIMINATOR_LENGTH
+        + MINT_LENGTH
+        + AUTHORITY_LENGTH
+        + TOTAL_USER_MINT_COUNT_LENGTH
+        + BUMP_LENGTH;
+
+    pub const SEED_PREFIX: &'static str = "dapp-token-manager-v2";
+    // NOTE To get MAX of type: u32::MAX
+    // Q: Need &'static lifetime for u64?
+    pub const MINT_AMOUNT_RAW: u64 = 1000000000 * 100; // 100 Tokens
+    pub const MINT_AMOUNT_UI: u64 = 100; // 100 Tokens
+
+    pub fn new(mint: Pubkey, authority: Pubkey, bump: u8) -> Self {
+        DappTokenManagerV2 {
+            mint,
+            authority,
+            // Q: Could I add a mint_number field in Ledger?
+            // Or, perhaps create a Profile struct with total_mint_count as well?
+            // The idea is to limit a user wallet from minting too much.
+            // Maybe I could check that number of Ledgers associated
+            // with wallet is == profile.total_mint_count
+            total_user_mint_count: 0,
+            bump,
+        }
+    }
+
 }
 
 // #[cfg(test)]
