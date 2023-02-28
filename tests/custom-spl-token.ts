@@ -22,6 +22,7 @@ import { CustomSplToken } from "../target/types/custom_spl_token";
 // - SK Hooks (see Notion)
 // - create() + init_if_needed feature vs. create_idempotent()
 // - BigInt arithmetic
+// - Must find PDA and pass from CLIENT to IX
 
 // async function createKeypairFromFile(
 //   filepath: string
@@ -43,10 +44,10 @@ describe("custom-spl-token", () => {
     .CustomSplToken as anchor.Program<CustomSplToken>;
 
   // Get a mint address for the program
-  // IMPORTANT: I'll have to move this Keypair out of this test
+  // IMPORTANT: Have to move this Keypair out of this test
   // when I want to have ONE SINGLE token for the program
-  const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
-  console.log(`New token (mint): ${mintKeypair.publicKey}`);
+  const mintKeypair1: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+  console.log(`New token (mint): ${mintKeypair1.publicKey}`);
   // Create dappTokenMintV1 global to track
   let dappTokenMintV1: Mint;
 
@@ -56,11 +57,31 @@ describe("custom-spl-token", () => {
   const [dappTokenManagerV1Pda, dappTokenManagerBump] = anchor.utils.publicKey.findProgramAddressSync(
     [
       Buffer.from("dapp-token-manager-v1"),
-      mintKeypair.publicKey.toBuffer(),
+      mintKeypair1.publicKey.toBuffer(),
     ],
     program.programId
   )
   console.log("dappTokenManagerV1Pda: ", dappTokenManagerV1Pda);
+
+  // For Version2
+  const mintKeypair2: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+  console.log(`New token (mint): ${mintKeypair2.publicKey}`);
+  // Create dappTokenMintV2 global to track
+  let dappTokenMintV2: Mint;
+
+  // Create dappTokenManagerV2 for program
+  let dappTokenManagerV2: anchor.IdlAccounts<CustomSplToken>['dappTokenManagerV2'];
+  // - Derive a PDA between mint + program for dappTokenManagerV2
+  const [dappTokenManagerV2Pda, dappTokenManagerV2Bump] = anchor.utils.publicKey.findProgramAddressSync(
+    [
+      Buffer.from("dapp-token-manager-v2"),
+      mintKeypair2.publicKey.toBuffer(),
+    ],
+    program.programId
+  )
+  console.log("dappTokenManagerV2Pda: ", dappTokenManagerV2Pda);
+
+
   const ONE_TOKEN_AMOUNT_RAW = 1000000000;
   const MINT_AMOUNT_RAW = ONE_TOKEN_AMOUNT_RAW * 100; // 100 full tokens
   const MINT_AMOUNT_UI = 100; // 100 full tokens
@@ -175,13 +196,13 @@ describe("custom-spl-token", () => {
     const tx = await program.methods
       .initializeDappSplWithKeypair()
       .accounts({
-        mint: mintKeypair.publicKey,
+        mint: mintKeypair1.publicKey,
         dappTokenManagerV1: dappTokenManagerV1Pda,
         authority: wallet.publicKey,
       })
-      // NOTE I was right that the mintKeypair and wallet are signers,
+      // NOTE I was right that the mintKeypair1 and wallet are signers,
       // but you don't pass wallet as signer for Anchor. It already knows.
-      .signers([mintKeypair])
+      .signers([mintKeypair1])
       .rpc({ skipPreflight: true }); // Get better logs
     console.log("tx:", tx);
 
@@ -194,7 +215,7 @@ describe("custom-spl-token", () => {
     dappTokenMintV1 = await getMint(provider.connection, dappTokenManagerV1.mint);
     console.log("dappSplMint: ", dappTokenMintV1);
 
-    expect(dappTokenManagerV1.mint.toBase58()).to.equal(mintKeypair.publicKey.toBase58());
+    expect(dappTokenManagerV1.mint.toBase58()).to.equal(mintKeypair1.publicKey.toBase58());
     expect(dappTokenManagerV1.totalUserMintCount.toNumber()).to.equal(0);
     expect(dappTokenManagerV1.bump).to.equal(dappTokenManagerBump);
     expect(dappTokenMintV1.mintAuthority.toBase58()).to.equal(dappTokenManagerV1Pda.toBase58());
@@ -212,7 +233,7 @@ describe("custom-spl-token", () => {
       // user1TokenAccount = await getOrCreateAssociatedTokenAccount(
       //   provider.connection,
       //   user1Wallet, // payer (Keypair/Payer)
-      //   // mintKeypair.publicKey, // mint
+      //   // mintKeypair1.publicKey, // mint
       //   dappTokenManagerV1.mint, // mint
       //   // dappTokenMintV1.address, // mint
       //   user1Wallet.publicKey, // owner
@@ -228,7 +249,7 @@ describe("custom-spl-token", () => {
       // createAssociatedTokenAccountInstruction(), etc.
       // REF: Escrow Program - routes/escrow/[pda]/+page.svelte
       user1TokenAccount = getAssociatedTokenAddressSync(
-        mintKeypair.publicKey, // mint
+        mintKeypair1.publicKey, // mint
         user1Wallet.publicKey // owner
       );
       console.log('user1TokenAccount: ', user1TokenAccount);
@@ -242,7 +263,7 @@ describe("custom-spl-token", () => {
           user1Wallet.publicKey, // payer
           user1TokenAccount, // ata
           user1Wallet.publicKey, // owner
-          mintKeypair.publicKey, // mint
+          mintKeypair1.publicKey, // mint
         ),
       ];
 
@@ -280,7 +301,7 @@ describe("custom-spl-token", () => {
     // program. Escrow accept() doesn't have it (only has token::transfer())
     // but Escrow accept() does use client getOrCreateAssociatedTokenAccount()
     // U: PROGRESS. I removed program associated_token::create() ix from
-    // inside mint_dapp_spl(). Also replaced mintKeypair.publicKey
+    // inside mint_dapp_spl(). Also replaced mintKeypair1.publicKey
     // with dappTokenManagerV1.mint and this was better! The user1TokenAccount
     // was actually created (see logs). Now encountering a raw constraint
     // violation error for user_token_account. I think the .mint addresses
@@ -308,7 +329,7 @@ describe("custom-spl-token", () => {
       .mintDappSpl()
       .accounts({
         // user: user1Wallet.publicKey,
-        mint: mintKeypair.publicKey,
+        mint: mintKeypair1.publicKey,
         dappTokenManagerV1: dappTokenManagerV1Pda,
         userTokenAccount: user1TokenAccount as anchor.web3.PublicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -324,7 +345,7 @@ describe("custom-spl-token", () => {
 
     dappTokenMintV1 = await getMint(
       provider.connection,
-      mintKeypair.publicKey
+      mintKeypair1.publicKey
     );
     console.log('dappTokenMintV1: ', dappTokenMintV1);
 
@@ -380,6 +401,39 @@ describe("custom-spl-token", () => {
     // - user1TokenAccount.owner should be user1Wallet.pubkey
     expect(currentUser1TokenAccountInfo.owner.toBase58()).to.equal(user1Wallet.publicKey.toBase58())
   })
+
+
+    it("Create dappTokenManagerV2", async () => {
+    // Get a mint address
+    // pub const SEED_PREFIX: &'static str = "dapp-token-manager";
+
+    const tx = await program.methods
+      .initializeDappTokenManagerV2()
+      .accounts({
+        // NOTE Still pass mint even though it's not initialized yet
+        mint: mintKeypair2.publicKey, 
+        dappTokenManagerV2: dappTokenManagerV2Pda,
+        authority: wallet.publicKey,
+      })
+      // Q: I only sign with wallet, right? I'm not
+      // creating the Mint (yet), so shouldn't need
+      // to sign with mintKeypair2
+      .signers([wallet])
+      .rpc({ skipPreflight: true }); // Get better logs
+    console.log("tx:", tx);
+
+    // Check that SPL was created and supply minted
+    dappTokenManagerV2 = await program.account.dappTokenManagerV2.fetch(
+      dappTokenManagerV2Pda
+    );
+    console.log("dappTokenManagerV2: ", dappTokenManagerV2);
+
+
+    expect(dappTokenManagerV2.mint.toBase58()).to.equal(mintKeypair2.publicKey.toBase58());
+    expect(dappTokenManagerV2.totalUserMintCount.toNumber()).to.equal(0);
+    expect(dappTokenManagerV2.bump).to.equal(dappTokenManagerBump);
+  });
+
 
 });
 
