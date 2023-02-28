@@ -444,6 +444,7 @@ pub mod custom_spl_token {
         )?;
 
         // Update total_user_mint_count
+        // U: Look into try_add_assign(val)? helper
         ctx.accounts.dapp_token_manager_v3.total_user_mint_count += 1;
 
         Ok(())
@@ -825,7 +826,7 @@ pub struct MintDappTokenSupplyV3<'info> {
     )]
     pub dapp_token_manager_v3: Account<'info, DappTokenManagerV3>,
 
-    // In case user_token_account doesn't exist yet, I think
+    // Q: Need this with init_if_needed? In case user_token_account doesn't exist yet, I think
     // I need the user to sign and pay
     #[account(mut)]
     pub user: Signer<'info>, 
