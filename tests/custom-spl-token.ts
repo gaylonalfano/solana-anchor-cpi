@@ -11,6 +11,7 @@ import {
 } from "@solana/spl-token";
 import { expect } from "chai";
 import { CustomSplToken } from "../target/types/custom_spl_token";
+import { createKeypairFromFile } from "./utils";
 // import fs from "mz/fs";
 
 // TIL:
@@ -23,6 +24,10 @@ import { CustomSplToken } from "../target/types/custom_spl_token";
 // - create() + init_if_needed feature vs. create_idempotent()
 // - BigInt arithmetic
 // - If signing with PDA, MUST find PDA and pass from CLIENT to IX
+// - init_if_needed only needs getAssociatedTokenAddressSync() for
+//   the user_token_account. Just pass the Pubkey and that's it!
+// - Max seed length error: Use PublicKey.toBuffer() instead of
+//   Buffer.from(raw string) - must be smaller in bytes /shrug
 
 // Q: Can I test out a persistant Token on localhost? Now that I have
 // a DappTokenManagerV3 approach?
@@ -49,6 +54,7 @@ describe("custom-spl-token", () => {
   // Get a mint address for the program
   // IMPORTANT: Have to move this Keypair out of this test
   // when I want to have ONE SINGLE token for the program
+  // NOTE The temp Keypairs do not persist. Need to get from file.
   const mintKeypair1: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   console.log(`New token (mint): ${mintKeypair1.publicKey}`);
   // Create dappTokenMintV1 global to track
@@ -84,11 +90,20 @@ describe("custom-spl-token", () => {
   )
   console.log("dappTokenManagerV2Pda: ", dappTokenManagerV2Pda);
 
-  // For Version3
+  // For Version3 with persistant Token 
   const mintKeypair3: anchor.web3.Keypair = anchor.web3.Keypair.generate();
   console.log(`New token (mint): ${mintKeypair3.publicKey}`);
   // Create dappTokenMintV3 global to track
   let dappTokenMintV3: Mint;
+
+  // Create dappTokenMintPersist for program
+  // 1. Create new keygen JSON file: solana keygen grind
+  // 2. Create Keypair from file using helper in before()
+  // 3. Pass Keypair as Signer in initializeDappTokenManagerAndTokenMintV3
+  const dappTokenMintPersistAddressString = "CSt37xN2JnW1uLQDwBFeNkJArqWvSkzuEynssjoT5Y8W";
+  const dappTokenMintPersistPubkey = new anchor.web3.PublicKey(dappTokenMintPersistAddressString);
+  let dappTokenMintPersistKeypair: anchor.web3.Keypair;
+  let dappTokenMintPersist: Mint;
 
   // Create dappTokenManagerV3 for program
   let dappTokenManagerV3: anchor.IdlAccounts<CustomSplToken>['dappTokenManagerV3'];
@@ -96,11 +111,19 @@ describe("custom-spl-token", () => {
   const [dappTokenManagerV3Pda, dappTokenManagerV3Bump] = anchor.utils.publicKey.findProgramAddressSync(
     [
       Buffer.from("dapp-token-manager-v3"),
-      mintKeypair3.publicKey.toBuffer(),
+      // U: Swapping out temp mint for persisting mint
+      // mintKeypair3.publicKey.toBuffer(),
+      // Q: FIXME Error: max seed length exceeded
+      // Buffer.from("CSt37xN2JnW1uLQDwBFeNkJArqWvSkzuEynssjoT5Y8W"), // Error
+      // Buffer.from(dappTokenMintPersistAddressString), // Error
+      // A: Works! Had to pass PublicKey.toBuffer() instead! Must 'pack' to smaller
+      // bytes vs raw string. /shrug
+      dappTokenMintPersistPubkey.toBuffer(), // Works! 
     ],
     program.programId
   )
   console.log("dappTokenManagerV3Pda: ", dappTokenManagerV3Pda);
+
 
   const ONE_TOKEN_AMOUNT_RAW = 1000000000;
   const MINT_AMOUNT_RAW = ONE_TOKEN_AMOUNT_RAW * 100; // 100 full tokens
@@ -110,12 +133,15 @@ describe("custom-spl-token", () => {
   const user1Wallet = anchor.web3.Keypair.generate();
   const user2Wallet = anchor.web3.Keypair.generate();
   const user3Wallet = anchor.web3.Keypair.generate();
-  console.log("user1Wallet: ", user1Wallet.publicKey.toBase58());
-  console.log("user2Wallet: ", user2Wallet.publicKey.toBase58());
-  console.log("user3Wallet: ", user3Wallet.publicKey.toBase58());
+  const user4Wallet = anchor.web3.Keypair.generate();
+  // console.log("user1Wallet: ", user1Wallet.publicKey.toBase58());
+  // console.log("user2Wallet: ", user2Wallet.publicKey.toBase58());
+  // console.log("user3Wallet: ", user3Wallet.publicKey.toBase58());
+  console.log("user4Wallet: ", user4Wallet.publicKey.toBase58());
   let user1TokenAccount;
   let user2TokenAccount;
   let user3TokenAccount;
+  let user4TokenAccount;
 
   // U: Testing out updated initializeDappSpl instruction
   before(async () => {
@@ -150,6 +176,27 @@ describe("custom-spl-token", () => {
     console.log(
       `user3Wallet balance: ${await provider.connection.getBalance(user3Wallet.publicKey)}`
     );
+
+    await provider.connection.confirmTransaction(
+      await provider.connection.requestAirdrop(
+        user4Wallet.publicKey,
+        anchor.web3.LAMPORTS_PER_SOL * 2
+      )
+    );
+    console.log(
+      `user4Wallet balance: ${await provider.connection.getBalance(user4Wallet.publicKey)}`
+    );
+
+    // 2. Create the PERSISTING dApp Token Mint
+    // Persistant Token (instead of temp Keypairs)
+    // Let's create our Keypair from the keypair file
+    // console.log('__dirname:', __dirname);
+    dappTokenMintPersistKeypair = await createKeypairFromFile(
+      __dirname + `/keypairs/${dappTokenMintPersistAddressString}.json`
+    );
+    // console.log("dappTokenMintPersistKeypair: ", dappTokenMintPersistKeypair);
+    console.log("dappTokenMintPersistKeypair.publicKey: ", dappTokenMintPersistKeypair.publicKey);
+
     // ====== May come back to this when trying to set up SINGLE SPL =====
     // // 2. Setup the dApp Token
     // // UPDATE: Found out thanks to Joe that a program-specific SPL token isn't
@@ -467,7 +514,8 @@ describe("custom-spl-token", () => {
   //   expect(dappTokenManagerV2.bump).to.equal(dappTokenManagerBump);
   // });
 
-  it("Create dappTokenManagerV3 and dappTokenMintV3 (if needed)", async () => {
+  xit("Create dappTokenManagerV3 and dappTokenMintV3", async () => {
+    // UPDATE: Adding dappTokenMintPersist, so check tests below!
     // Get a mint address
     // pub const SEED_PREFIX: &'static str = "dapp-token-manager-v3";
 
@@ -481,6 +529,7 @@ describe("custom-spl-token", () => {
       // NOTE I was right that the mintKeypair3 and wallet are signers,
       // but you don't pass wallet as signer for Anchor. It already knows.
       // Q: With init_if_needed, do I still have mintKeypair3 as signer just in case?
+      // A: Yes! init_if_needed is only applied to the user_token_account, not mint or dTM
       .signers([mintKeypair3])
       .rpc({ skipPreflight: true }); // Get better logs
     console.log("tx:", tx);
@@ -501,7 +550,7 @@ describe("custom-spl-token", () => {
     expect(dappTokenMintV3.freezeAuthority.toBase58()).to.equal(dappTokenManagerV3Pda.toBase58());
   });
 
-  it("Mint dappTokenMintV3 supply to user3TokenAccount (create ATA if needed)", async () => {
+  xit("Mint dappTokenMintV3 supply to user3TokenAccount (create ATA if needed)", async () => {
     // NOTE Using init_if_needed in validation struct for user_token_account.
     // Q: Do I still need to getAssociatedTokenAddressSync()?
     // My guess is yes, since I need to pass user_token_account in accounts({})
@@ -587,7 +636,7 @@ describe("custom-spl-token", () => {
   });
 
 
-  it("AGAIN, Mint dappTokenMintV3 supply to user3TokenAccount (ATA already created)", async () => {
+  xit("AGAIN, Mint dappTokenMintV3 supply to user3TokenAccount (ATA already created)", async () => {
     // NOTE Using init_if_needed in validation struct for user_token_account.
     // Q: Do I still need to getAssociatedTokenAddressSync()?
     // My guess is yes, since I need to pass user_token_account in accounts({})
@@ -670,6 +719,214 @@ describe("custom-spl-token", () => {
     expect((currentUser3TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal((MINT_AMOUNT_UI * 2).toString());
     // - user3TokenAccount.owner should be user3Wallet.pubkey
     expect(currentUser3TokenAccountInfo.owner.toBase58()).to.equal(user3Wallet.publicKey.toBase58())
+  });
+
+
+  it("Create dappTokenManagerV3 and dappTokenMintPersist", async () => {
+    // UPDATE: Adding dappTokenMintPersist, so check tests below!
+    // Get a mint address
+    // pub const SEED_PREFIX: &'static str = "dapp-token-manager-v3";
+
+    const tx = await program.methods
+      .initializeDappTokenManagerAndTokenMintV3()
+      .accounts({
+        mint: dappTokenMintPersistKeypair.publicKey,
+        dappTokenManagerV3: dappTokenManagerV3Pda,
+        authority: wallet.publicKey, // my local config wallet
+      })
+      // NOTE I was right that the dappTokenMintPersistKeypair and wallet are signers,
+      // but you don't pass wallet as signer for Anchor. It already knows.
+      // Q: With init_if_needed, do I still have mintKeypair3 as signer just in case?
+      // A: Yes! init_if_needed is only applied to the user_token_account, not mint or dTM
+      .signers([dappTokenMintPersistKeypair])
+      .rpc({ skipPreflight: true }); // Get better logs
+    console.log("tx:", tx);
+
+    // Check that SPL was created and supply minted
+    dappTokenManagerV3 = await program.account.dappTokenManagerV3.fetch(
+      dappTokenManagerV3Pda
+    );
+    console.log("dappTokenManagerV3: ", dappTokenManagerV3);
+
+    dappTokenMintPersist = await getMint(provider.connection, dappTokenManagerV3.mint);
+    console.log("dappTokenMintPersist: ", dappTokenMintPersist);
+
+    expect(dappTokenManagerV3.mint.toBase58()).to.equal(dappTokenMintPersistKeypair.publicKey.toBase58());
+    expect(dappTokenManagerV3.totalUserMintCount.toNumber()).to.equal(0);
+    expect(dappTokenManagerV3.bump).to.equal(dappTokenManagerV3Bump);
+    expect(dappTokenMintPersist.mintAuthority.toBase58()).to.equal(dappTokenManagerV3Pda.toBase58());
+    expect(dappTokenMintPersist.freezeAuthority.toBase58()).to.equal(dappTokenManagerV3Pda.toBase58());
+  });
+
+  it("Mint dappTokenMintV3 supply to user4TokenAccount (create ATA if needed)", async () => {
+    // NOTE Using init_if_needed in validation struct for user_token_account.
+    // Q: Do I still need to getAssociatedTokenAddressSync()?
+    // My guess is yes, since I need to pass user_token_account in accounts({})
+    // A: YES! But only need to getAssociatedTokenAddressSync(). See 'tokenAccount' in repo:
+    // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/tests/token-with-metadata.ts
+    try {
+      // NOTE I could do this up top with other globals
+      // U: Could refactor this try/catch as well
+      user4TokenAccount = getAssociatedTokenAddressSync(
+        dappTokenMintPersistKeypair.publicKey, // mint
+        user4Wallet.publicKey, // owner
+      );
+      console.log('user4TokenAccount: ', user4TokenAccount);
+
+      const tx = await program.methods
+        .mintDappTokenSupplyV3()
+        .accounts({
+          userTokenAccount: user4TokenAccount,
+          mint: dappTokenMintPersistKeypair.publicKey,
+          dappTokenManagerV3: dappTokenManagerV3Pda,
+          user: user4Wallet.publicKey,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        // Q: Which Signers? Both wallet and mintKeypair?
+        // U: With BOTH, I get Error: unknown signer
+        // U: With just mintKeypair3, same Error: unknown signer
+        // A: Wait! Why pass mintKeypair!? I need ATA, which is
+        // getting init_if_needed in program and payer = user, 
+        // so I just need USER WALLET!
+        .signers([user4Wallet])
+        .rpc({ skipPreflight: true }); // Get better logs
+      console.log("TxHash ::", tx);
+    } catch (err: any) {
+      console.log('err: ', err);
+    }
+
+    setTimeout(
+      async () => { console.log('Waiting for user4TokenAccount to be created...'); },
+      3000
+    );
+
+    // Transaction was successful up to this point
+    // Fetch updated accounts data
+    dappTokenManagerV3 = await program.account.dappTokenManagerV3.fetch(dappTokenManagerV3Pda);
+    dappTokenMintPersist = await getMint(
+      provider.connection,
+      dappTokenMintPersistKeypair.publicKey
+    );
+    console.log('dappTokenMintPersist: ', dappTokenMintPersist);
+
+    const supplyUiAmountStr = (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 100
+    // console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 100
+    // console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
+    // console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
+    console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.valueOf()); // 100000000000n
+    console.log('dappTokenMintPersist.supply.toString(): ',dappTokenMintPersist.supply.toString()); // 100000000000
+    console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.toString()); // 100000000000
+
+    const currentUser4TokenAccountBalance = await provider.connection.getTokenAccountBalance(
+      user4TokenAccount
+    );
+    console.log('currentUser4TokenAccountBalance: ', currentUser4TokenAccountBalance);
+
+    const currentUser4TokenAccountInfo = await getAccount(
+      provider.connection,
+      user4TokenAccount
+    )
+    console.log('currentUser4TokenAccountInfo.amount.valueOf: ', currentUser4TokenAccountInfo.amount.valueOf()); // 100000000000n
+    console.log('currentUser4TokenAccountInfo.amount.toString: ', currentUser4TokenAccountInfo.amount.toString()); // 100000000000
+
+    // - Mint supply should be MINT_AMOUNT 
+    expect(
+      (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+    ).to.equal(MINT_AMOUNT_UI.toString());
+    // - dappTokenManagerV3.totalUserMintCount is 1
+    expect(dappTokenManagerV3.totalUserMintCount.toNumber()).to.equal(1);
+    // - user3TokenAccountBalance is MINT_AMOUNT
+    expect(currentUser4TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI);
+    expect((currentUser4TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal(MINT_AMOUNT_UI.toString());
+    // - user4TokenAccount.owner should be user4Wallet.pubkey
+    expect(currentUser4TokenAccountInfo.owner.toBase58()).to.equal(user4Wallet.publicKey.toBase58())
+  });
+
+
+  it("AGAIN, Mint dappTokenMintV3 supply to user4TokenAccount (ATA already created)", async () => {
+    // NOTE Using init_if_needed in validation struct for user_token_account.
+    // Q: Do I still need to getAssociatedTokenAddressSync()?
+    // My guess is yes, since I need to pass user_token_account in accounts({})
+    // A: Yes! Only need to getAssociatedTokenAddressSync(). See 'tokenAccount' in repo:
+    // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/tests/token-with-metadata.ts
+    try {
+      // NOTE I could do this up top with other globals
+      // U: Could refactor this try/catch as well
+      user4TokenAccount = getAssociatedTokenAddressSync(
+        dappTokenMintPersistKeypair.publicKey, // mint
+        user4Wallet.publicKey, // owner
+      );
+      console.log('user4TokenAccount: ', user4TokenAccount);
+
+      const tx = await program.methods
+        .mintDappTokenSupplyV3()
+        .accounts({
+          userTokenAccount: user4TokenAccount,
+          mint: dappTokenMintPersistKeypair.publicKey,
+          dappTokenManagerV3: dappTokenManagerV3Pda,
+          user: user4Wallet.publicKey,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        // Q: Which Signers? Both wallet and mintKeypair?
+        // U: With BOTH, I get Error: unknown signer
+        // U: With just mintKeypair4, same Error: unknown signer
+        // A: Wait! Why pass mintKeypair!? I need ATA, which is
+        // getting init_if_needed in program and payer = user, 
+        // so I just need user wallet
+        .signers([user4Wallet])
+        .rpc({ skipPreflight: true }); // Get better logs
+      console.log("TxHash ::", tx);
+    } catch (err: any) {
+      console.log('err: ', err);
+    }
+
+    setTimeout(
+      async () => { console.log('Waiting for user4TokenAccount to be created...'); },
+      3000
+    );
+
+    // Transaction was successful up to this point
+    // Fetch updated accounts data
+    dappTokenManagerV3 = await program.account.dappTokenManagerV3.fetch(dappTokenManagerV3Pda);
+    dappTokenMintPersist = await getMint(
+      provider.connection,
+      dappTokenMintPersistKeypair.publicKey
+    );
+    console.log('dappTokenMintPersist: ', dappTokenMintPersist);
+
+    const supplyUiAmountStr = (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 200
+    console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 200
+    // console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
+    // console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
+    console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.valueOf()); // 200000000000n
+    console.log('dappTokenMintPersist.supply.toString(): ', dappTokenMintPersist.supply.toString()); // 200000000000
+    console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.toString()); // 200000000000
+
+    const currentUser4TokenAccountBalance = await provider.connection.getTokenAccountBalance(
+      user4TokenAccount
+    );
+    console.log('currentUser4TokenAccountBalance: ', currentUser4TokenAccountBalance);
+
+    const currentUser4TokenAccountInfo = await getAccount(
+      provider.connection,
+      user4TokenAccount
+    )
+    console.log('currentUser4TokenAccountInfo.amount.valueOf: ', currentUser4TokenAccountInfo.amount.valueOf()); // 200000000000n
+    console.log('currentUser4TokenAccountInfo.amount.toString: ', currentUser4TokenAccountInfo.amount.toString()); // 200000000000
+
+    // - Mint supply should be MINT_AMOUNT 
+    expect(
+      (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+    ).to.equal((MINT_AMOUNT_UI * 2).toString());
+    // - dappTokenManagerV3.totalUserMintCount is 2
+    expect(dappTokenManagerV3.totalUserMintCount.toNumber()).to.equal(2);
+    // - user4TokenAccountBalance is MINT_AMOUNT
+    expect(currentUser4TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI * 2);
+    expect((currentUser4TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal((MINT_AMOUNT_UI * 2).toString());
+    // - user4TokenAccount.owner should be user4Wallet.pubkey
+    expect(currentUser4TokenAccountInfo.owner.toBase58()).to.equal(user4Wallet.publicKey.toBase58())
   });
 
 

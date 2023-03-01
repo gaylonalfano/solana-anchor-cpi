@@ -18,6 +18,10 @@ use {
 // For example, the Mint authority and freeze_authority
 // will be set to DPManager, but DPManager.mint value is
 // set to DPMint, so which to create first?
+// A: Not an answer, but V1 (and V3) in one IX, first manually
+// creates a system account for mint, then creates the DTManager
+// struct, and finally InitializeMint and sets Mint authorities
+// to the DTManager. Seems to work out nicely.
 
 // Check out SPL Token with Metadata (new with metaplex)
 // You can init the Mint instead of passing Keypair from client
@@ -46,8 +50,7 @@ use {
 //            or create_idempotent()
 // 8. Program: mint_to() + PDA signer
 
-// TODO
-// - Consider building another variation where 'mint' and 'user_token_account'
+// TODO: DONE (V3): Consider building another variation where 'mint' and 'user_token_account'
 // are both created inside program instead of using JS. See Bare's snippet below.
 // and would have to use create() + init_if_needed feature,
 // OR create_idempotent() for ATA.
@@ -417,6 +420,8 @@ pub mod custom_spl_token {
     pub fn mint_dapp_token_supply_v3(ctx: Context<MintDappTokenSupplyV3>) -> Result<()> {
         // Q: Don't need to create ATA here since my validation struct
         // is 'init_if_needed`, right? Will have to have user pay though in case
+        // A: Right! Just need to getAssociatedTokenAccountSync() in Client
+        // and that's it! Must less TS code to write.
         // Q: Is this spl-token mint <TOKEN_ADDRESS> <AMOUNT> <RECIPIENT_ADDRESS>?
         // A: Yes! This mints (increases supply of Token) and transfers new tokens
         // to owner's token account (default recipient token address) balance
