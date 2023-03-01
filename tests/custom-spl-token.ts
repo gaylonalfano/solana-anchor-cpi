@@ -31,6 +31,7 @@ import { createKeypairFromFile } from "./utils";
 
 // Q: Can I test out a persistant Token on localhost? Now that I have
 // a DappTokenManagerV3 approach?
+// A: YES! See dappTokenMintPersist below
 
 // async function createKeypairFromFile(
 //   filepath: string
