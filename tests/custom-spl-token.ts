@@ -724,7 +724,12 @@ describe("custom-spl-token", () => {
   // });
 
 
-  it("Create dappTokenManagerV3 and dappTokenMintPersist", async () => {
+  xit("Create dappTokenManagerV3 and dappTokenMintPersist", async () => {
+    // U: IMPORTANT: It's deployed! Therefore, I no longer need
+    // to run this code ever again! The token is on devnet and
+    // the dappTokenManager is its authority. Since this is a TS test
+    // I will need to generate Wallet keypair files. Otherwise,
+    // a new wallet keypair gets generated each time I run tests.
     // UPDATE: Adding dappTokenMintPersist, so check tests below!
     // Get a mint address
     // pub const SEED_PREFIX: &'static str = "dapp-token-manager-v3";
