@@ -25,10 +25,10 @@ pub mod dapp_token_manager_program {
 
     pub fn create_dapp_token_manager(
         ctx: Context<CreateDappTokenManager>, 
-        caller_program: Pubkey,
-        mint_amount: u64,
+        authority: Pubkey,
+        supply_amount_per_mint: u64,
     ) -> Result<()> {
-        instructions::create_dapp_token_manager::handler(ctx, caller_program, mint_amount)
+        instructions::create_dapp_token_manager::handler(ctx, authority, supply_amount_per_mint)
     }
 
     pub fn mint_dapp_token_supply(ctx: Context<MintDappTokenSupply>) -> Result<()> {

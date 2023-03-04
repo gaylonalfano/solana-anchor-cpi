@@ -46,6 +46,7 @@ pub struct SetData<'info> {
     pub puppet: Account<'info, Puppet>,
     // Q: If masterProgram uses a PDA for PullStrings 'authority' CPI account,
     // will type Signer still work?
+    // A: Yes
     pub authority: Signer<'info>,
 }
 

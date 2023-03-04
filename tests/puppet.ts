@@ -67,31 +67,31 @@ describe('puppet', () => {
       .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(42);
   });
 
-  // Scenario A: authority is a Keypair
-  const authorityKeypair = Keypair.generate();
+  // // Scenario A: authority is a Keypair
+  // const authorityKeypair = Keypair.generate();
 
-  xit('CPI: authority as Keypair', async () => {
-    await puppetProgram.methods
-      .initialize(authorityKeypair.publicKey)
-      .accounts({
-        puppet: puppetKeypair.publicKey,
-        user: provider.wallet.publicKey,
-      })
-      .signers([puppetKeypair])
-      .rpc();
+  // xit('CPI: authority as Keypair', async () => {
+  //   await puppetProgram.methods
+  //     .initialize(authorityKeypair.publicKey)
+  //     .accounts({
+  //       puppet: puppetKeypair.publicKey,
+  //       user: provider.wallet.publicKey,
+  //     })
+  //     .signers([puppetKeypair])
+  //     .rpc();
 
-    await masterProgram.methods
-      .pullStrings(new anchor.BN(42))
-      .accounts({
-        puppetProgram: puppetProgram.programId,
-        puppet: puppetKeypair.publicKey,
-        authority: authorityKeypair.publicKey
-      })
-      .signers([authorityKeypair])
-      .rpc();
+  //   await masterProgram.methods
+  //     .pullStrings(new anchor.BN(42))
+  //     .accounts({
+  //       puppetProgram: puppetProgram.programId,
+  //       puppet: puppetKeypair.publicKey,
+  //       authority: authorityKeypair.publicKey
+  //     })
+  //     .signers([authorityKeypair])
+  //     .rpc();
 
-    expect((await puppetProgram.account.puppet
-      .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(42);
-  })
+  //   expect((await puppetProgram.account.puppet
+  //     .fetch(puppetKeypair.publicKey)).data.toNumber()).to.equal(42);
+  // })
 
 });

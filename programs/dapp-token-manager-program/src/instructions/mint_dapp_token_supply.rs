@@ -4,6 +4,10 @@ use anchor_spl::token::{self, Mint, Token, TokenAccount};
 
 use crate::state::DappTokenManager;
 
+// Q: Where does Caller 'authority' fit into the equation? 
+// Perhaps the Caller has 'authority' over the DTM, 
+// and DTM has 'authority' over the Mint?
+
 pub fn handler(ctx: Context<MintDappTokenSupply>) -> Result<()> {
     // 1. Program: Create ATA for the user wallet
     //    NOTE: Will need 'init_if_needed' feature
@@ -65,6 +69,16 @@ pub struct MintDappTokenSupply<'info> {
 
     #[account(
         mut,
+        // Q: Need has_one = authority? The Puppet Program
+        // does have 'authority: Signer' account, but my DTM
+        // is already set as Mint's mint_authority and freeze
+        // authority, so not sure where Caller Program 'authority'
+        // fits into the equation? Perhaps the Caller has
+        // 'authority' over the DTM, and DTM has 'authority' over
+        // the Mint?
+        // U: Adding 'authority' account to this struct for now
+        // and adding this has_one check, similar to Puppet
+        has_one = authority,
         constraint = dapp_token_manager.mint == mint.key(),
         seeds = [
             DappTokenManager::SEED_PREFIX.as_ref(),
@@ -74,6 +88,13 @@ pub struct MintDappTokenSupply<'info> {
         bump = dapp_token_manager.bump,
     )]
     pub dapp_token_manager: Account<'info, DappTokenManager>,
+
+    // NOTE This is whatever the Caller Program passed as 
+    // IX data to the create_dapp_token_manager() method.
+    // Could be PDA or Keypair.
+    // Q: If PDA, do I need 'authority_bump'?
+    #[account(mut)]
+    pub authority: Signer<'info>,
 
     // Q: Need user as Signer if already has ATA?
     // A: Yes!
