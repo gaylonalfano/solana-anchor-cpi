@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use puppet_program::{self, cpi::accounts::SetData, program::PuppetProgram, Puppet};
 
-declare_id!("vGymT9KU2hQMZvYxMapvDeqhhyD25VVZ6JKdZjx6925");
+declare_id!("CXdpazvEeifrgWfQGbwbtokAewZPsGSGJ2tRCe1Bif8g");
 
 // === Authority as PDA ===
 #[program]

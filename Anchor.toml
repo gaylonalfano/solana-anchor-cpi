@@ -3,11 +3,11 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-solana_anchor_cpi = "7LXZ8onmdiK629ZfPnDKXMSL7tbEnuLzsvpzokCNonq4"
-puppet_program = "CEReZ1uhTPWpaY3YbScWvKeLm8XcM6jM42dkv8F9Dypk"
-master_program = "vGymT9KU2hQMZvYxMapvDeqhhyD25VVZ6JKdZjx6925"
-custom_spl_token = "cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp"
-dapp_token_program_program = "CoZDizMLZU86SxPkLCky7uGbSoSMRVNUihAUoFBiQJhf"
+solana_anchor_cpi = "2ZdKfWepCPcrRTuiPrkgyGc5WwJBamQPxGwekUrsaJ4q"
+puppet_program = "H1nQekf9pqzhV6B8v5CKehEF3g9x2D9PTpXFXWQYUfmk"
+master_program = "CXdpazvEeifrgWfQGbwbtokAewZPsGSGJ2tRCe1Bif8g"
+custom_spl_token = "G6shU9tx729XhYru4h5ZpHYBsN7Qkz61tmqQNmsUVyw2"
+dapp_token_program_program = "9T7y6YzHKFfHjpueENveMTidXcLmME1DK6TEjqQ753jc"
 
 [programs.devnet]
 solana_anchor_cpi = "7LXZ8onmdiK629ZfPnDKXMSL7tbEnuLzsvpzokCNonq4"

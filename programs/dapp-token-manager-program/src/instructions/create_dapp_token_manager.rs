@@ -7,7 +7,7 @@ use crate::state::DappTokenManager;
 // -------- Instruction Function --------
 pub fn handler(
     ctx: Context<CreateDappTokenManager>,
-    caller_program: Pubkey,
+    authority: Pubkey, // Keypair or PDA (flexible I think...)
     supply_amount_per_mint: u64,
 ) -> Result<()> {
     // 1. CLI/Client: Create a Keypair
@@ -19,7 +19,7 @@ pub fn handler(
             ctx.accounts.system_program.to_account_info(),
             // IX accounts
             system_program::CreateAccount {
-                from: ctx.accounts.authority.to_account_info(), // wallet
+                from: ctx.accounts.authority_payer.to_account_info(), // fee payer wallet
                 to: ctx.accounts.mint.to_account_info(),
             },
         ),
@@ -31,12 +31,10 @@ pub fn handler(
     // 3. Program: Create the DTM PDA
     msg!("2. Create DappTokenManager PDA using calling program.key() & mint.key() as seeds...");
     let dapp_token_manager = DappTokenManager::new(
-        caller_program,
+        authority, // caller program decides (Keypair, PDA)
         ctx.accounts.mint.key(),
         supply_amount_per_mint,
-        // Q: What's going to be the authority? The caller program?
-        // Or, a PDA of the caller program? A wallet?
-        ctx.accounts.authority.key(),
+        ctx.accounts.authority_payer.key(),
         // NOTE bumps.get("account_name"), NOT seed!
         *ctx.bumps
             .get("dapp_token_manager")
@@ -66,7 +64,7 @@ pub fn handler(
             &[&[
                 DappTokenManager::SEED_PREFIX.as_bytes(),
                 ctx.accounts.mint.key().as_ref(),
-                caller_program.as_ref(),
+                authority.as_ref(),
             ]],
         ),
         9,
@@ -83,7 +81,7 @@ pub fn handler(
 
 // -------- Accounts Validation Struct -------
 #[derive(Accounts)]
-#[instruction(caller_program: Pubkey, supply_amount_per_mint: u64)]
+#[instruction(authority: Pubkey, supply_amount_per_mint: u64)]
 pub struct CreateDappTokenManager<'info> {
     // Client: Pass a Keypair
     #[account(mut)]
@@ -96,24 +94,35 @@ pub struct CreateDappTokenManager<'info> {
     // E.g.:
     // #[account]
     // pub caller_program: Program<'info, CallerProgram>, //???
+    // U: Trying 'authority' as IX data from caller, and 
+    // 'authority_payer' as the fee payer. Read below.
 
     // NOTE Add #[instruction(caller_program: Pubkey)] up top
     // so it's accessible (since I'm not passing it as an account)
     #[account(
         init,
-        payer = authority,
+        payer = authority_payer,
         space = DappTokenManager::ACCOUNT_SPACE,
         seeds = [
             DappTokenManager::SEED_PREFIX.as_ref(),
             mint.key().as_ref(),
-            caller_program.as_ref(),
+            authority.as_ref(),
         ],
         bump
     )]
     pub dapp_token_manager: Account<'info, DappTokenManager>,
 
+    // U/Q: Should I remove 'authority' as Signer and just make caller program
+    // the 'authority'? Puppet passes 'authority' as Instruction Data,
+    // so the Master can pass either a Keypair or PDA as 'authority' of Puppet...
+    // Who would pay? Need to add a generic 'payer' wallet account? Puppet has
+    // a 'user' account as the payer, FYI.
+    // U: Renaming this from 'authority' to 'authority_payer', since we need a payer
+    // A: Still want an 'authority' field on DTM struct, but going to allow
+    // the 'authority' to be passed as Instruction Data (either Keypair or PDA)
+    // I think this gives caller more flexibility
     #[account(mut)]
-    pub authority: Signer<'info>, // The fee payer (calling program wallet)
+    pub authority_payer: Signer<'info>, // The fee payer (calling program wallet)
 
     pub rent: Sysvar<'info, Rent>,
     pub token_program: Program<'info, Token>,

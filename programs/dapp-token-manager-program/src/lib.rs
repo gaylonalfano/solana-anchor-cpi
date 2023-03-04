@@ -17,10 +17,10 @@ pub mod state;
 // - 
 
 
-declare_id!("CoZDizMLZU86SxPkLCky7uGbSoSMRVNUihAUoFBiQJhf");
+declare_id!("9T7y6YzHKFfHjpueENveMTidXcLmME1DK6TEjqQ753jc");
 
 #[program]
-pub mod dapp_token_manager {
+pub mod dapp_token_manager_program {
     use super::*;
 
     pub fn create_dapp_token_manager(

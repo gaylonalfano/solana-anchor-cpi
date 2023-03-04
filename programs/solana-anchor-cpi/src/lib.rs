@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("7LXZ8onmdiK629ZfPnDKXMSL7tbEnuLzsvpzokCNonq4");
+declare_id!("2ZdKfWepCPcrRTuiPrkgyGc5WwJBamQPxGwekUrsaJ4q");
 
 #[program]
 pub mod solana_anchor_cpi {

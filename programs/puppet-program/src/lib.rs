@@ -1,7 +1,7 @@
 // https://book.anchor-lang.com/anchor_in_depth/CPIs.html
 use anchor_lang::prelude::*;
 
-declare_id!("CEReZ1uhTPWpaY3YbScWvKeLm8XcM6jM42dkv8F9Dypk");
+declare_id!("H1nQekf9pqzhV6B8v5CKehEF3g9x2D9PTpXFXWQYUfmk");
 
 #[program]
 pub mod puppet_program {

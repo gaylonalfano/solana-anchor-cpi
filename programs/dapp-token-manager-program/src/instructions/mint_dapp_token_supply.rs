@@ -31,7 +31,7 @@ pub fn handler(ctx: Context<MintDappTokenSupply>) -> Result<()> {
                 ctx.accounts.mint.key().as_ref(),
                 ctx.accounts
                     .dapp_token_manager
-                    .caller_program
+                    .authority
                     .key()
                     .as_ref(),
             ]],
@@ -69,7 +69,7 @@ pub struct MintDappTokenSupply<'info> {
         seeds = [
             DappTokenManager::SEED_PREFIX.as_ref(),
             mint.key().as_ref(),
-            dapp_token_manager.caller_program.as_ref(),
+            dapp_token_manager.authority.as_ref(),
         ],
         bump = dapp_token_manager.bump,
     )]

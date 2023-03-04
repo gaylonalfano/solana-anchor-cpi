@@ -55,7 +55,7 @@ use {
 // and would have to use create() + init_if_needed feature,
 // OR create_idempotent() for ATA.
 
-declare_id!("cPshoEnza1TMdWGRkQyiQQqu34iMDTc7i3XT8uVVfjp");
+declare_id!("G6shU9tx729XhYru4h5ZpHYBsN7Qkz61tmqQNmsUVyw2");
 
 #[program]
 pub mod custom_spl_token {
