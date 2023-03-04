@@ -7,6 +7,9 @@ use crate::state::DappTokenManager;
 // Q: Where does Caller 'authority' fit into the equation? 
 // Perhaps the Caller has 'authority' over the DTM, 
 // and DTM has 'authority' over the Mint?
+// U: Not sure if I need to include 'authority: Signer' in
+// this instruction, since this is purely for MintTo, which
+// DTM PDA has the authority to sign. Gotta test it out.
 
 pub fn handler(ctx: Context<MintDappTokenSupply>) -> Result<()> {
     // 1. Program: Create ATA for the user wallet
@@ -38,6 +41,7 @@ pub fn handler(ctx: Context<MintDappTokenSupply>) -> Result<()> {
                     .authority
                     .key()
                     .as_ref(),
+                &[ctx.accounts.dapp_token_manager.bump]
             ]],
         ),
         ctx.accounts.dapp_token_manager.supply_amount_per_mint, // amount to mint each time
@@ -78,7 +82,9 @@ pub struct MintDappTokenSupply<'info> {
         // the Mint?
         // U: Adding 'authority' account to this struct for now
         // and adding this has_one check, similar to Puppet
-        has_one = authority,
+        // U: Removing has_one = authority. Just don't think I need it,
+        // since this is a MintTo, which just needs DTM to sign
+        // has_one = authority,
         constraint = dapp_token_manager.mint == mint.key(),
         seeds = [
             DappTokenManager::SEED_PREFIX.as_ref(),
@@ -93,8 +99,11 @@ pub struct MintDappTokenSupply<'info> {
     // IX data to the create_dapp_token_manager() method.
     // Could be PDA or Keypair.
     // Q: If PDA, do I need 'authority_bump'?
-    #[account(mut)]
-    pub authority: Signer<'info>,
+    // Q: Does this need to be Signer? Or something else?
+    // Do I even need this?
+    // U: Don't think I need this tbh. We'll see.
+    // #[account(mut)]
+    // pub authority: Signer<'info>,
 
     // Q: Need user as Signer if already has ATA?
     // A: Yes!
