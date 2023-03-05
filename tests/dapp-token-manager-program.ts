@@ -28,6 +28,10 @@ import { createKeypairFromFile } from "./utils";
 //   the user_token_account. Just pass the Pubkey and that's it!
 // - Max seed length error: Use PublicKey.toBuffer() instead of
 //   Buffer.from(raw string) - must be smaller in bytes /shrug
+// - CPI: I will still use dappTokenManagerProgram to create
+//   the DTM, but I assign the Caller Program PDA as the DTM.authority!
+//   Then (I think), I just need to build the IX to CPI invoke
+//   the mintDappTokenSupply() from inside Caller Program (Master Program)
 
 
 // Q: Not sure if this is right. The caller program is going to

@@ -17,5 +17,6 @@ default = []
 
 [dependencies]
 anchor-lang = "0.26.0"
+anchor-spl = "0.26.0"
 puppet-program = { path = "../puppet-program", features = ["cpi"]}
-# dapp-token-manager-program = { path = "../dapp-token-manager-program", features = ["cpi"] }
+dapp-token-manager-program = { path = "../dapp-token-manager-program", features = ["cpi"] }

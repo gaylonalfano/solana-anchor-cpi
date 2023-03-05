@@ -11,10 +11,15 @@ pub mod state;
 // mint, mint_amount, etc. 
 
 // QUESTIONS specific to using this via CPI:
-// - Should the caller program also create a PDA or use Keypair to be 'authority'?
-// - The caller will have cpi::context to this program, but NOT
+// - Q: Should the caller program also create a PDA or use Keypair to be 'authority'?
+//   A: PDA seems to be commonly used.
+// - Q: The caller will have cpi::context to this program, but NOT
 //   the other way around, right?
-// - 
+//   A: Right. The caller 
+// - Q: Do I need to create Caller IX structs and functions that
+//      match this program's? Seems redundant and the Puppet/Master
+//      example only has Master IX & fn when it (Master Program)
+//      has to sign the CPI instruction (set_data()) with its PDA.
 
 
 declare_id!("9T7y6YzHKFfHjpueENveMTidXcLmME1DK6TEjqQ753jc");

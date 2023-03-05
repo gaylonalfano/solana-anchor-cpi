@@ -10,6 +10,16 @@ use crate::state::DappTokenManager;
 // U: Not sure if I need to include 'authority: Signer' in
 // this instruction, since this is purely for MintTo, which
 // DTM PDA has the authority to sign. Gotta test it out.
+// U: After going back and forth, part of me thinks that 
+// this current setup isn't a good use case for CPI between
+// two programs. The reason is that currently I don't have
+// the Caller program SIGN anything! Yes, I derive a 'authority'
+// PDA using the Caller Program, but it's only used as a seed
+// for the DTM. Even the mint_to() is signed by the DTM, which
+// is a PDA of the DTM Program. However, if I possibly made it
+// where the Caller 'authority' PDA could SIGN the mint_to(),
+// then maybe that actually makes a good case for CPI. 
+// Otherwise, I don't really see a real use case.
 
 pub fn handler(ctx: Context<MintDappTokenSupply>) -> Result<()> {
     // 1. Program: Create ATA for the user wallet
