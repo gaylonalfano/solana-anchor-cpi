@@ -7,6 +7,12 @@ use {
     },
 };
 
+// TIL:
+// - Learned you can use a PDA for both Mint and Mint's authority!
+// - CpiContext.with_signer() is same as CpiContext::new_with_signer()
+// - CpiContext 'T': CpiContext<'_,'_,'_,'info,MintTo<'info>>
+
+
 // Q: For master to CPI this program (e.g., mint more supply, transfer),
 // does it need to be set as the mint_authority of the mint account?
 // Which means we'd maybe need to first create a PDA between the masterProgram
@@ -55,12 +61,67 @@ use {
 // and would have to use create() + init_if_needed feature,
 // OR create_idempotent() for ATA.
 
+// TODO (V4)
+// U: Learned you can use a PDA for both Mint and Mint's authority!
+// Going to create another approach.
+
 declare_id!("G6shU9tx729XhYru4h5ZpHYBsN7Qkz61tmqQNmsUVyw2");
 
 #[program]
 pub mod custom_spl_token {
     use super::*;
 
+    // === NEW Approach using single PDA for both Mint and Mint authority ====
+    pub fn initialize_dapp_token_mint(ctx: Context<InitializeDappTokenMint>) -> Result<()> {
+        msg!("Dapp token mint initialized!");
+        Ok(())
+    }
+
+
+    pub fn mint_dapp_token_supply(ctx: Context<MintDappTokenSupply>, amount: u64) -> Result<()> {
+        msg!(
+            "Minting supply to user token account (signing via mint PDA seeds)..."
+        );
+
+        // Syntax 1: Build CpiContext via impl fn
+        // NOTE mint_to() is a helper function for MintTo IX
+        token::mint_to(
+            ctx.accounts.mint_to_cpi_ctx().with_signer(
+                &[&[
+                    "dapp-token-mint".as_bytes(),
+                    &[*ctx.bumps.get("mint").expect("Bump not found.")]
+                ]]
+            ),
+            amount
+        )?;
+
+        // Syntax 2: No cpi_ctx() function
+        // token::mint_to(
+        //     CpiContext::new_with_signer(
+        //         ctx.accounts.token_program.to_account_info(), // Program to ping
+        //         token::MintTo {
+        //             // Instructions with accounts to pass to program
+        //             mint: ctx.accounts.mint.to_account_info(),
+        //             to: ctx.accounts.user_token_account.to_account_info(),
+        //             authority: ctx.accounts.mint.to_account_info(),
+        //         },
+        //         // Sign with PDA seeds
+        //         &[&[
+        //             "dapp-token-mint".as_bytes(),
+        //             *ctx.bumps.get("mint").expect("Bump not found."),
+        //         ]],
+        //     ),
+        //     // Additonal args
+        //     amount
+        // )?;
+        //
+        msg!("Supply minted!");
+
+        Ok(())
+    }
+
+
+    // ==== OLD Approaches with a DTM Struct =====
     pub fn initialize_dapp_spl_with_keypair(ctx: Context<InitializeDappSplWithKeypair>) -> Result<()> {
         // Invoke a Cross-program Invocation:
         // NOTE Hits another program by sending required accounts
@@ -334,11 +395,12 @@ pub mod custom_spl_token {
         Ok(())
     }
 
-    pub fn initialize_dapp_token_mint_v2(ctx: Context<InitializeDappTokenMint>) -> Result<()> {
+    pub fn initialize_dapp_token_mint_v2(ctx: Context<InitializeDappTokenMintOldV2>) -> Result<()> {
         // Q: What do I put in here if it's getting created
         // thanks to 'init'? Don't think I need to manually
         // call token::initialize_mint()...
         // Do I need to validate anything else? 
+        // A: No! BUT, need to use PDA for BOTH Mint and Mint authority!
         // require_keys_eq!(
         //     ctx.accounts.mint.mint_authority,
         //     ctx.accounts.dapp_token_manager_v2.key()
@@ -456,6 +518,93 @@ pub mod custom_spl_token {
     }
 }
 
+// ===== NEW Approach using PDA for both Mint and Mint authority ===
+// IMPORTANT: Here we initialize a new Mint account using a PDA with the string "mint"
+// as a seed. Note that we can use the same PDA for both the address of the
+// Mint account and the mint authority. Using a PDA as the mint authority
+// enables our program to sign for the minting of the tokens.
+// In order to initialize the Mint account, we'll need to include the 
+// token_program, rent, and system_program in the list of accounts.
+#[derive(Accounts)]
+pub struct InitializeDappTokenMint<'info> {
+    #[account(
+        init,
+        seeds = ["dapp-token-mint".as_bytes()],
+        bump,
+        payer = user,
+        mint::decimals = 9,
+        mint::authority = mint,
+        mint::freeze_authority = mint,
+    )]
+    pub mint: Account<'info, Mint>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    pub token_program: Program<'info, token::Token>,
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>
+}
+
+
+#[derive(Accounts)]
+#[instruction(amount: u64)]
+pub struct MintDappTokenSupply<'info> {
+    // IMPORTANT: Using PDA for both Mint and Mint authority ===
+
+    // Q: Need this with init_if_needed? In case user_token_account doesn't exist yet, I think
+    // I need the user to sign and pay
+    // A: Yes!
+    #[account(mut)]
+    pub user: Signer<'info>, 
+
+    // U: Bare would use `init_if_needed` instead of creating from Client
+    // NOTE Need to add features = ["init-if-needed"] in Cargo.toml
+    #[account(
+        init_if_needed,
+        payer = user,
+        associated_token::mint = mint,
+        associated_token::authority = user
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    // IMPORTANT: MUST make the 'mint' account writable since supply will be mutated!
+    // U: By using a PDA for Mint and Mint.authority, we need
+    // to use its seeds and bump to retrieve.
+    #[account(
+        mut,
+        seeds = ["dapp-token-mint".as_bytes()],
+        bump,
+        constraint = mint.supply > amount
+    )]
+    pub mint: Account<'info, Mint>,
+
+    pub rent: Sysvar<'info, Rent>,
+    pub associated_token_program: Program<'info, associated_token::AssociatedToken>,
+    pub token_program: Program<'info, token::Token>,
+    pub system_program: Program<'info, System>,
+
+}
+
+impl<'info> MintDappTokenSupply<'info> {
+    // Composing CPI Context here instead of inside fn
+    // NOTE: The return T is the MintTo
+    fn mint_to_cpi_ctx(&self) -> CpiContext<'_, '_, '_, 'info, token::MintTo<'info>> {
+        CpiContext::new(
+            self.token_program.to_account_info(),
+            token::MintTo {
+                // Instruction accounts to pass
+                mint: self.mint.to_account_info(),
+                to: self.user_token_account.to_account_info(),
+                authority: self.mint.to_account_info()
+            }
+        )
+    }
+}
+
+
+
+// ====================== OLD Approaches using DTM ====
 #[derive(Accounts)]
 pub struct InitializeDappSplWithKeypair<'info> {
     // Client: Need to pass a Keypair
@@ -677,7 +826,7 @@ pub struct InitializeDappTokenManager<'info> {
 }
 
 #[derive(Accounts)]
-pub struct InitializeDappTokenMint<'info> {
+pub struct InitializeDappTokenMintOldV2<'info> {
     // Q: By initializing mint inside program using 'init',
     // guess I just need a payer to sign? Or, probably still
     // need to add client Keypair as a signer in frontend?

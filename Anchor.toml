@@ -1,5 +1,5 @@
 [features]
-seeds = false
+seeds = true # Anchor will auto-infer PDA seeds/bumps
 skip-lint = false
 
 [programs.localnet]

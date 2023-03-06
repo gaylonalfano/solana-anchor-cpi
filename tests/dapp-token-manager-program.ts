@@ -28,10 +28,18 @@ import { createKeypairFromFile } from "./utils";
 //   the user_token_account. Just pass the Pubkey and that's it!
 // - Max seed length error: Use PublicKey.toBuffer() instead of
 //   Buffer.from(raw string) - must be smaller in bytes /shrug
+// - CPI: signing with seeds is done with CPI, the client doesn't
+//   actually know what accounts are going to act as signer within
+//   a transaction. you just have user sign, then on-chain you sign 
+//   with the PDA with seeds
 // - CPI: I will still use dappTokenManagerProgram to create
 //   the DTM, but I assign the Caller Program PDA as the DTM.authority!
 //   Then (I think), I just need to build the IX to CPI invoke
 //   the mintDappTokenSupply() from inside Caller Program (Master Program)
+//   U: Actually, not sure if CPI makes sense if I don't have
+//   the Caller Program actually sign anything. Currently, I simply
+//   derive an 'authority' PDA from the Caller (Master), 
+//   and that's used as a seed for the DTM.
 
 
 // Q: Not sure if this is right. The caller program is going to
