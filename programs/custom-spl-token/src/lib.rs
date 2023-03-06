@@ -83,6 +83,14 @@ pub mod custom_spl_token {
             "Minting supply to user token account (signing via mint PDA seeds)..."
         );
 
+        require!(amount > 0, "Amount must be greater than 0");
+        // Q: Is there mint.cap or mint.max_supply properties?
+        // require!(
+        //             ctx.accounts.mint.supply + amount <= ctx.accounts.mint.cap,
+        //             "Mint cap reached"
+        //         );
+
+
         // Syntax 1: Build CpiContext via impl fn
         // NOTE mint_to() is a helper function for MintTo IX
         token::mint_to(
@@ -575,7 +583,9 @@ pub struct MintDappTokenSupply<'info> {
         mut,
         seeds = ["dapp-token-mint".as_bytes()],
         bump,
-        constraint = mint.supply > amount
+        // Q: Can I check that supply > amount?
+        // A: Nope! May have another approach...
+        // constraint = mint.supply > amount
     )]
     pub mint: Account<'info, Mint>,
 

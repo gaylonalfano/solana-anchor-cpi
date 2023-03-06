@@ -173,6 +173,7 @@ describe("dapp-token-manager-program", () => {
       // U: I've added 'authority_payer: Signer' in Accounts struct
       // Q: How do I specify a different wallet as a Signer, rather than
       // the Anchor default provider.wallet? Do I just pass authorityPayer?
+      // A: Yes, just pass the specific wallet!
       .signers([dappTokenMintKeypair, authorityPayer])
       .rpc({ skipPreflight: true }); // Get better logs
     console.log("tx:", tx);

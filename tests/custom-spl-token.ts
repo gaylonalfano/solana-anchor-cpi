@@ -312,6 +312,188 @@ describe("custom-spl-token", () => {
   });
 
 
+  it("Mint dappTokenMint supply to user5TokenAccount (create ATA if needed)", async () => {
+    // NOTE Using init_if_needed in validation struct for user_token_account.
+    // Q: Do I still need to getAssociatedTokenAddressSync()?
+    // My guess is yes, since I need to pass user_token_account in accounts({})
+    // A: YES! But only need to getAssociatedTokenAddressSync(). See 'tokenAccount' in repo:
+    // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/tests/token-with-metadata.ts
+    try {
+      // NOTE I could do this up top with other globals
+      // U: Could refactor this try/catch as well
+      user5TokenAccount = getAssociatedTokenAddressSync(
+        dappTokenMintPda, // mint
+        user5Wallet.publicKey, // owner
+      );
+      console.log('user5TokenAccount: ', user5TokenAccount);
+
+      const tx = await program.methods
+        .mintDappTokenSupply(new anchor.BN(MINT_AMOUNT_RAW))
+        .accounts({
+          userTokenAccount: user5TokenAccount,
+          mint: dappTokenMintPda,
+          user: user5Wallet.publicKey,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        // Q: Which Signers? Both wallet and mintKeypair?
+        // U: With BOTH, I get Error: unknown signer
+        // U: With just mintKeypair3, same Error: unknown signer
+        // A: Wait! Why pass mintKeypair!? I need ATA, which is
+        // getting init_if_needed in program and payer = user, 
+        // so I just need USER WALLET!
+        .signers([user5Wallet])
+        .rpc({ skipPreflight: true }); // Get better logs
+      console.log("TxHash ::", tx);
+    } catch (err: any) {
+      console.log('err: ', err);
+    }
+
+    setTimeout(
+      async () => { console.log('Waiting for user5TokenAccount to be created...'); },
+      3000
+    );
+
+    // Transaction was successful up to this point
+    // Fetch updated accounts data
+    const currentDappTokenMint = await getMint(
+      provider.connection,
+      dappTokenMintPda
+    );
+    console.log('currentDappTokenMint: ', currentDappTokenMint);
+    // Update global state
+    dappTokenMint = currentDappTokenMint;
+
+    const supplyUiAmountStr = (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 100
+    // console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 100
+    // console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
+    // console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
+    console.log('dappTokenMint.supply.valueOf(): ', dappTokenMint.supply.valueOf()); // 100000000000n
+    console.log('dappTokenMint.supply.toString(): ', dappTokenMint.supply.toString()); // 100000000000
+    console.log('dappTokenMint.supply.valueOf(): ', dappTokenMint.supply.toString()); // 100000000000
+
+    const currentUser5TokenAccountBalance = await provider.connection.getTokenAccountBalance(
+      user5TokenAccount
+    );
+    console.log('currentUser5TokenAccountBalance: ', currentUser5TokenAccountBalance);
+
+    const currentUser5TokenAccountInfo = await getAccount(
+      provider.connection,
+      user5TokenAccount
+    )
+    console.log('currentUser5TokenAccountInfo.amount.valueOf: ', currentUser5TokenAccountInfo.amount.valueOf()); // 100000000000n
+    console.log('currentUser5TokenAccountInfo.amount.toString: ', currentUser5TokenAccountInfo.amount.toString()); // 100000000000
+
+    // - Mint supply should be MINT_AMOUNT 
+    expect(
+      (dappTokenMint.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+    ).to.equal(MINT_AMOUNT_UI.toString());
+    expect(currentUser5TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI);
+    expect((currentUser5TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal(MINT_AMOUNT_UI.toString());
+    // - user5TokenAccount.owner should be user5Wallet.pubkey
+    expect(currentUser5TokenAccountInfo.owner.toBase58()).to.equal(user5Wallet.publicKey.toBase58())
+  });
+
+
+  // xit("AGAIN, Mint dappTokenMintV3 supply to user5TokenAccount (ATA already created)", async () => {
+  //   // NOTE Using init_if_needed in validation struct for user_token_account.
+  //   // Q: Do I still need to getAssociatedTokenAddressSync()?
+  //   // My guess is yes, since I need to pass user_token_account in accounts({})
+  //   // A: Yes! Only need to getAssociatedTokenAddressSync(). See 'tokenAccount' in repo:
+  //   // REF: https://github.com/ZYJLiu/token-with-metadata/blob/master/tests/token-with-metadata.ts
+  //   try {
+  //     // NOTE I could do this up top with other globals
+  //     // U: Could refactor this try/catch as well
+  //     user5TokenAccount = getAssociatedTokenAddressSync(
+  //       dappTokenMintPersistKeypair.publicKey, // mint
+  //       user5Wallet.publicKey, // owner
+  //     );
+  //     console.log('user5TokenAccount: ', user5TokenAccount);
+
+  //     const tx = await program.methods
+  //       .mintDappTokenSupplyV3()
+  //       .accounts({
+  //         userTokenAccount: user5TokenAccount,
+  //         mint: dappTokenMintPersistKeypair.publicKey,
+  //         dappTokenManagerV3: dappTokenManagerV3Pda,
+  //         user: user5Wallet.publicKey,
+  //         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+  //         tokenProgram: TOKEN_PROGRAM_ID,
+  //       })
+  //       // Q: Which Signers? Both wallet and mintKeypair?
+  //       // U: With BOTH, I get Error: unknown signer
+  //       // U: With just mintKeypair5, same Error: unknown signer
+  //       // A: Wait! Why pass mintKeypair!? I need ATA, which is
+  //       // getting init_if_needed in program and payer = user, 
+  //       // so I just need user wallet
+  //       .signers([user5Wallet])
+  //       .rpc({ skipPreflight: true }); // Get better logs
+  //     console.log("TxHash ::", tx);
+  //   } catch (err: any) {
+  //     console.log('err: ', err);
+  //   }
+
+  //   setTimeout(
+  //     async () => { console.log('Waiting for user5TokenAccount to be created...'); },
+  //     3000
+  //   );
+
+  //   // Transaction was successful up to this point
+  //   // Fetch updated accounts data
+  //   dappTokenManagerV3 = await program.account.dappTokenManagerV3.fetch(dappTokenManagerV3Pda);
+  //   dappTokenMintPersist = await getMint(
+  //     provider.connection,
+  //     dappTokenMintPersistKeypair.publicKey
+  //   );
+  //   console.log('dappTokenMintPersist: ', dappTokenMintPersist);
+
+  //   const supplyUiAmountStr = (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString(); // 200
+  //   console.log('supplyUiAmountStr: ', supplyUiAmountStr); // 200
+  //   // console.log('Math.pow(10,9): ', Math.pow(10, 9)); // 1000000000 (1 token)
+  //   // console.log('BigInt(Math.pow(10,9)): ', BigInt(Math.pow(10, 9))); // 1000000000n
+  //   console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.valueOf()); // 200000000000n
+  //   console.log('dappTokenMintPersist.supply.toString(): ', dappTokenMintPersist.supply.toString()); // 200000000000
+  //   console.log('dappTokenMintPersist.supply.valueOf(): ', dappTokenMintPersist.supply.toString()); // 200000000000
+
+  //   const currentUser5TokenAccountBalance = await provider.connection.getTokenAccountBalance(
+  //     user5TokenAccount
+  //   );
+  //   console.log('currentUser5TokenAccountBalance: ', currentUser5TokenAccountBalance);
+
+  //   const currentUser5TokenAccountInfo = await getAccount(
+  //     provider.connection,
+  //     user5TokenAccount
+  //   )
+  //   console.log('currentUser5TokenAccountInfo.amount.valueOf: ', currentUser5TokenAccountInfo.amount.valueOf()); // 200000000000n
+  //   console.log('currentUser5TokenAccountInfo.amount.toString: ', currentUser5TokenAccountInfo.amount.toString()); // 200000000000
+
+  //   // - Mint supply should be MINT_AMOUNT 
+  //   expect(
+  //     (dappTokenMintPersist.supply / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()
+  //   ).to.equal((MINT_AMOUNT_UI * 2).toString());
+  //   // - dappTokenManagerV3.totalUserMintCount is 2
+  //   expect(dappTokenManagerV3.totalUserMintCount.toNumber()).to.equal(2);
+  //   // - user5TokenAccountBalance is MINT_AMOUNT
+  //   expect(currentUser5TokenAccountBalance.value.uiAmount).to.equal(MINT_AMOUNT_UI * 2);
+  //   expect((currentUser5TokenAccountInfo.amount / BigInt(ONE_TOKEN_AMOUNT_RAW)).toString()).to.equal((MINT_AMOUNT_UI * 2).toString());
+  //   // - user5TokenAccount.owner should be user5Wallet.pubkey
+  //   expect(currentUser5TokenAccountInfo.owner.toBase58()).to.equal(user5Wallet.publicKey.toBase58())
+  // });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   // ======= OLD Approach with DTM =======
   // xit("Create dappTokenManagerV1", async () => {
